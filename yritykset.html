@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yritykset — Tuntiseuranta</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth-guard.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e8eaf0;
+      --muted:    #7a7f96;
+      --accent:   #f59e0b;
+      --accent2:  #d97706;
+      --danger:   #ef4444;
+      --danger-bg:#2d1212;
+      --ok:       #22c55e;
+    }
+
+    body {
+      visibility: hidden; /* auth-guard.js näyttää kun kirjautuminen on varmistettu */
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── NAV (sama kuin muilla sivuilla) ── */
+    nav {
+      background: #241e30;
+      border-bottom: 2px solid var(--accent);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 300;
+    }
+    nav h1 { font-size: 16px; font-weight: 500; }
+    .nav-links { display: flex; gap: 4px; margin-left: 8px; }
+    .nav-link {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    .nav-link:hover { background: var(--surface); color: var(--text); }
+    .nav-link.current { color: var(--accent); }
+    .ml-auto { margin-left: auto; }
+    .nav-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 4px;
+      cursor: pointer;
+    }
+    .nav-btn:hover { background: var(--border); }
+
+    /* ── PAGE ── */
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem 3rem;
+    }
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .page-header h2 { font-size: 18px; font-weight: 600; }
+
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .btn:hover { background: var(--border); }
+    .btn-accent {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+    .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); }
+    .btn-danger {
+      background: var(--danger-bg);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+    .btn-small { font-size: 11px; padding: 5px 10px; }
+
+    /* ── YRITYSKORTIT ── */
+    .company-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .company-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+    .company-card.inactive { opacity: 0.55; }
+    .company-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 0.6rem;
+    }
+    .color-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .company-name {
+      font-size: 15px;
+      font-weight: 600;
+      flex: 1;
+    }
+    .status-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+    .status-badge.active   { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .status-badge.inactive { background: rgba(122,127,150,0.15); color: var(--muted); }
+
+    .print-settings {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.1rem;
+      margin: 0.7rem 0 0.85rem;
+      padding-top: 0.7rem;
+      border-top: 1px solid var(--border);
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11.5px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-row input { accent-color: var(--accent); cursor: pointer; }
+    .toggle-row.on { color: var(--text); }
+
+    .company-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ── LISÄYS-LOMAKE ── */
+    .add-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1.5rem;
+      display: none;
+    }
+    .add-form.open { display: block; }
+    .add-form label {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .add-form-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .add-form input[type="text"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      min-width: 220px;
+    }
+    .add-form input[type="color"] {
+      width: 42px; height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      cursor: pointer;
+      padding: 2px;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 2rem 0;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1>Tuntiseuranta</h1>
+  <div class="nav-links">
+    <a class="nav-link" href="tunnit.html">Tunnit</a>
+    <a class="nav-link current" href="yritykset.html">Yritykset</a>
+  </div>
+  <div class="ml-auto"></div>
+  <button class="nav-btn" onclick="logout()">Kirjaudu ulos</button>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <h2>Yritykset</h2>
+    <button class="btn btn-accent" onclick="toggleAddForm()">+ Lisää yritys</button>
+  </div>
+
+  <div class="add-form" id="addForm">
+    <div class="add-form-row">
+      <div>
+        <label for="newName">Nimi</label>
+        <input type="text" id="newName" placeholder="esim. Okkosen Puutuote">
+      </div>
+      <div>
+        <label for="newColor">Väri</label>
+        <input type="color" id="newColor" value="#f59e0b">
+      </div>
+      <button class="btn btn-accent" onclick="addCompany()">Tallenna</button>
+      <button class="btn" onclick="toggleAddForm()">Peruuta</button>
+    </div>
+  </div>
+
+  <div class="company-list" id="companyList">
+    <div class="empty-state">Ladataan…</div>
+  </div>
+</div>
+
+<script>
+let companies = [];
+
+async function loadCompanies() {
+  const { data, error } = await supabaseClient
+    .from('companies')
+    .select('*')
+    .order('is_active', { ascending: false })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    document.getElementById('companyList').innerHTML =
+      `<div class="empty-state">Virhe ladattaessa: ${error.message}</div>`;
+    return;
+  }
+
+  companies = data;
+  renderCompanies();
+}
+
+function renderCompanies() {
+  const el = document.getElementById('companyList');
+
+  if (companies.length === 0) {
+    el.innerHTML = '<div class="empty-state">Ei vielä yhtään yritystä. Lisää ensimmäinen yllä olevasta napista.</div>';
+    return;
+  }
+
+  el.innerHTML = companies.map(c => {
+    const ps = c.print_settings || {};
+    const color = c.color || '#f59e0b';
+    return `
+      <div class="company-card ${c.is_active ? '' : 'inactive'}">
+        <div class="company-top">
+          <span class="color-dot" style="background:${color}"></span>
+          <span class="company-name">${escapeHtml(c.name)}</span>
+          <span class="status-badge ${c.is_active ? 'active' : 'inactive'}">
+            ${c.is_active ? 'AKTIIVINEN' : 'EI AKTIIVINEN'}
+          </span>
+        </div>
+
+        <div class="print-settings">
+          ${printToggle(c.id, 'show_overtime', 'Ylityöt tulosteessa', ps.show_overtime)}
+          ${printToggle(c.id, 'show_vacation', 'Lomat tulosteessa', ps.show_vacation)}
+          ${printToggle(c.id, 'show_sick', 'Sairauspoissaolot tulosteessa', ps.show_sick)}
+          ${printToggle(c.id, 'show_notes', 'Muistiinpanot tulosteessa', ps.show_notes)}
+        </div>
+
+        <div class="company-actions">
+          ${c.is_active
+            ? `<button class="btn btn-small" onclick="setActive('${c.id}', false)">Siirrä pois aktiivisista</button>`
+            : `<button class="btn btn-small" onclick="setActive('${c.id}', true)">Palauta aktiiviseksi</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function printToggle(companyId, key, label, checked) {
+  const id = `toggle-${companyId}-${key}`;
+  return `
+    <label class="toggle-row ${checked ? 'on' : ''}" for="${id}">
+      <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}
+             onchange="updatePrintSetting('${companyId}', '${key}', this.checked)">
+      ${label}
+    </label>
+  `;
+}
+
+async function updatePrintSetting(companyId, key, value) {
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return;
+
+  const newSettings = { ...(company.print_settings || {}), [key]: value };
+
+  const { error } = await supabaseClient
+    .from('companies')
+    .update({ print_settings: newSettings })
+    .eq('id', companyId);
+
+  if (error) {
+    alert('Tallennus epäonnistui: ' + error.message);
+    return;
+  }
+
+  company.print_settings = newSettings;
+  renderCompanies();
+}
+
+async function setActive(companyId, isActive) {
+  const { error } = await supabaseClient
+    .from('companies')
+    .update({ is_active: isActive })
+    .eq('id', companyId);
+
+  if (error) {
+    alert('Tallennus epäonnistui: ' + error.message);
+    return;
+  }
+
+  await loadCompanies();
+}
+
+function toggleAddForm() {
+  const form = document.getElementById('addForm');
+  form.classList.toggle('open');
+  if (form.classList.contains('open')) {
+    document.getElementById('newName').focus();
+  } else {
+    document.getElementById('newName').value = '';
+  }
+}
+
+async function addCompany() {
+  const name = document.getElementById('newName').value.trim();
+  const color = document.getElementById('newColor').value;
+
+  if (!name) {
+    alert('Anna yritykselle nimi.');
+    return;
+  }
+
+  const { error } = await supabaseClient
+    .from('companies')
+    .insert({
+      user_id: window.currentUser.id,
+      name: name,
+      color: color,
+      is_active: true,
+      print_settings: { show_overtime: true, show_vacation: true, show_sick: true, show_notes: true }
+    });
+
+  if (error) {
+    alert('Lisäys epäonnistui: ' + error.message);
+    return;
+  }
+
+  document.getElementById('newName').value = '';
+  toggleAddForm();
+  await loadCompanies();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+loadCompanies();
+</script>
+
+</body>
+</html>
