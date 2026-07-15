@@ -227,29 +227,32 @@
     }
 
     /* ── LÄHETYSHISTORIA ── */
-    .submissions-block { margin-top: 2rem; }
+    .submissions-block { margin-bottom: 1.5rem; }
     .submissions-block h3 {
       font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 0.6rem;
+      color: var(--text);
+      margin-bottom: 0.7rem;
     }
     .submission-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 12px;
       background: var(--surface);
       border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
       border-radius: 6px;
-      padding: 8px 12px;
-      margin-bottom: 6px;
+      padding: 10px 14px;
+      margin-bottom: 7px;
       font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px;
+      font-size: 13px;
     }
-    .submission-row .period { color: var(--text); }
+    .submission-row .period { color: var(--text); font-weight: 600; }
     .submission-row .meta { color: var(--muted); }
 
     /* ── MODAL ── */
@@ -312,11 +315,17 @@
     .btn-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); margin-right: auto; }
     .btn-danger:hover { background: var(--danger); color: #fff; }
 
+    /* ── SCREEN/PRINT-ARVOT (tarkka näytöllä, pyöristetty tulosteessa) ── */
+    .print-only { display: none; }
+
     /* ── PRINT ── */
     .print-header { display: none; }
     @media print {
+      * { color: #000 !important; }
       nav, .toolbar, .company-chips, .modal-backdrop, .submissions-block { display: none !important; }
       body { background: #fff; color: #000; visibility: visible !important; }
+      .screen-only { display: none !important; }
+      .print-only { display: inline-block !important; }
       .print-header { display: block; margin-bottom: 1rem; border-bottom: 2px solid #000; padding-bottom: 0.5rem; }
       .print-header h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.2rem; }
       .print-header p  { font-size: 0.9rem; color: #444; }
@@ -368,10 +377,16 @@
 
   <div class="print-header">
     <h2 id="printName"></h2>
+    <p id="printEmployee">Tomi Törnvall</p>
     <p id="printPeriod"></p>
   </div>
 
   <div class="company-chips" id="companyChips"></div>
+
+  <div class="submissions-block">
+    <h3>Lähetyshistoria</h3>
+    <div id="submissionsList"></div>
+  </div>
 
   <div class="toolbar">
     <div class="month-nav">
@@ -383,14 +398,23 @@
     <span style="color:var(--muted)">–</span>
     <input type="date" id="dateTo" onchange="onDateRangeChange()">
     <button class="btn" onclick="clearDateRange()">Tyhjennä väli</button>
+    <button class="btn" onclick="showUnsentRange()">Näytä lähettämättömät</button>
     <div class="ml-auto"></div>
     <button class="btn" onclick="doPrint()">Tulosta / PDF</button>
     <button class="btn btn-accent" id="submitBtn" onclick="openSubmitModal()">Lähetä tunnit</button>
   </div>
 
   <div class="summary-bar">
-    <div class="summary-card"><span class="label">Tunnit</span><span class="value" id="sumHours">0h</span></div>
-    <div class="summary-card card-overtime"><span class="label">Ylityö</span><span class="value" id="sumOvertime">0h</span></div>
+    <div class="summary-card">
+      <span class="label">Tunnit</span>
+      <span class="value screen-only" id="sumHours">0h</span>
+      <span class="value print-only" id="sumHoursPrint">0h</span>
+    </div>
+    <div class="summary-card card-overtime">
+      <span class="label">Ylityö</span>
+      <span class="value screen-only" id="sumOvertime">0h</span>
+      <span class="value print-only" id="sumOvertimePrint">0h</span>
+    </div>
     <div class="summary-card card-vacation"><span class="label">Lomapäiviä</span><span class="value" id="sumVacation">0</span></div>
     <div class="summary-card card-sick"><span class="label">Sairaspäiviä</span><span class="value" id="sumSick">0</span></div>
     <div class="summary-card"><span class="label">Työpäiviä</span><span class="value" id="sumDays">0</span></div>
@@ -409,11 +433,6 @@
     <tbody id="timeBody"></tbody>
   </table>
 
-  <div class="submissions-block">
-    <h3>Lähetyshistoria</h3>
-    <div id="submissionsList"></div>
-  </div>
-
 </div>
 
 <!-- ── PÄIVÄN MUOKKAUSMODAALI ── -->
@@ -426,11 +445,11 @@
     <div class="modal-row">
       <div>
         <label for="fHours">Tunnit</label>
-        <input type="number" id="fHours" step="0.25" min="0">
+        <input type="number" id="fHours" step="0.5" min="0">
       </div>
       <div>
         <label for="fOvertime">Ylityö</label>
-        <input type="number" id="fOvertime" step="0.25" min="0">
+        <input type="number" id="fOvertime" step="0.5" min="0">
       </div>
     </div>
     <div class="checkbox-row">
@@ -481,6 +500,7 @@ let entries = {};
 let editingDate = null;
 let editingId = null;
 let editingLocked = false;
+let onlyUnsentFilter = false;
 
 // ── ALUSTUS ──
 async function init() {
@@ -548,19 +568,49 @@ function changeMonth(dir) {
   if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value   = '';
+  onlyUnsentFilter = false;
   loadMonth();
 }
 
 function onDateRangeChange() {
   const from = document.getElementById('dateFrom').value;
   const to   = document.getElementById('dateTo').value;
+  onlyUnsentFilter = false;
   if (from && to) loadMonth();
 }
 
 function clearDateRange() {
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value   = '';
+  onlyUnsentFilter = false;
   loadMonth();
+}
+
+// Hakee kaikki lähettämättömät päivät valitulle yritykselle (koko historia),
+// asettaa aikavälin niiden mukaan ja suodattaa näkymän vain niihin.
+async function showUnsentRange() {
+  if (!selectedCompanyId) return;
+
+  const { data, error } = await supabaseClient
+    .from('time_entries')
+    .select('entry_date')
+    .eq('company_id', selectedCompanyId)
+    .is('submission_id', null)
+    .order('entry_date');
+
+  if (error) {
+    alert('Virhe haettaessa lähettämättömiä: ' + error.message);
+    return;
+  }
+  if (!data || data.length === 0) {
+    alert('Ei lähettämättömiä tunteja tälle yritykselle.');
+    return;
+  }
+
+  document.getElementById('dateFrom').value = data[0].entry_date;
+  document.getElementById('dateTo').value   = data[data.length - 1].entry_date;
+  onlyUnsentFilter = true;
+  await loadMonth();
 }
 
 function getDateRange() {
@@ -659,6 +709,8 @@ function renderTable(range) {
     const hasEntry = entry && (entry.hours > 0 || entry.overtime_hours > 0 || entry.is_vacation || entry.is_sick || entry.note);
     const isLocked = !!(entry && entry.submission_id);
 
+    if (onlyUnsentFilter && (!hasEntry || isLocked)) return;
+
     let classes = 'clickable';
     if (isWeekend)          classes += ' weekend';
     if (!hasEntry)          classes += ' no-entry';
@@ -666,8 +718,16 @@ function renderTable(range) {
     if (entry?.is_sick)     classes += ' is-sick';
     if (entry && !entry.is_vacation && !entry.is_sick) classes += ' has-entry';
 
-    let hoursCell  = entry?.hours > 0          ? `<span class="badge badge-hours">${entry.hours}h</span>`          : '';
-    let otCell     = entry?.overtime_hours > 0  ? `<span class="badge badge-hours">${entry.overtime_hours}h</span>` : '';
+    let hoursCell = '';
+    if (entry?.hours > 0) {
+      hoursCell = `<span class="badge badge-hours screen-only">${entry.hours}h</span>` +
+                  `<span class="badge badge-hours print-only">${roundUpHalf(entry.hours)}h</span>`;
+    }
+    let otCell = '';
+    if (entry?.overtime_hours > 0) {
+      otCell = `<span class="badge badge-hours screen-only">${entry.overtime_hours}h</span>` +
+               `<span class="badge badge-hours print-only">${roundUpHalf(entry.overtime_hours)}h</span>`;
+    }
     let statusCell = '';
     if (entry?.is_vacation) statusCell = '<span class="badge badge-vacation">Loma</span>';
     if (entry?.is_sick)     statusCell = '<span class="badge badge-sick">Sairas</span>';
@@ -700,9 +760,22 @@ function renderSummary() {
   document.getElementById('sumVacation').textContent = vacation;
   document.getElementById('sumSick').textContent     = sick;
   document.getElementById('sumDays').textContent     = days;
+
+  // Tulosteessa jokainen päivä pyöristetään ylöspäin lähimpään puoleen tuntiin,
+  // ja yhteenveto lasketaan noista pyöristetyistä arvoista (jotta rivit ja summa täsmäävät paperilla)
+  const hoursPrint    = round2(vals.reduce((s, e) => s + roundUpHalf(e.hours), 0));
+  const overtimePrint = round2(vals.reduce((s, e) => s + roundUpHalf(e.overtime_hours), 0));
+  document.getElementById('sumHoursPrint').textContent    = hoursPrint + 'h';
+  document.getElementById('sumOvertimePrint').textContent = overtimePrint + 'h';
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
+
+// Pyöristää ylöspäin lähimpään 0.5:een (esim. 18.08 → 18.5), tulostetta varten.
+function roundUpHalf(n) {
+  n = parseFloat(n) || 0;
+  return Math.ceil(n * 2) / 2;
+}
 
 // ── PÄIVÄN MUOKKAUSMODAALI ──
 function openModal(dateStr) {
