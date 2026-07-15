@@ -47,7 +47,8 @@
       top: 0;
       z-index: 300;
     }
-    nav h1 { font-size: 16px; font-weight: 500; }
+    nav h1 { font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 9px; }
+    .nav-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
     .nav-links { display: flex; gap: 4px; margin-left: 8px; }
     .nav-link {
       font-family: 'IBM Plex Mono', monospace;
@@ -371,7 +372,7 @@
 <body>
 
 <nav>
-  <h1>Tuntiseuranta</h1>
+  <h1><img src="pikkukuva.png" alt="" class="nav-logo">Tuntiseuranta</h1>
   <div class="nav-links">
     <a class="nav-link current" href="tunnit.html">Tunnit</a>
     <a class="nav-link" href="yritykset.html">Yritykset</a>
