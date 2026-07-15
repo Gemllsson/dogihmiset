@@ -13,7 +13,15 @@
   }
 
   window.currentUser = session.user;
-  document.body.style.visibility = 'visible';
+
+  // Sessio saattaa selvitä niin nopeasti (selaimen muistista), että <body>
+  // ei ole vielä olemassa tässä vaiheessa — odotetaan tarvittaessa.
+  const showBody = () => { document.body.style.visibility = 'visible'; };
+  if (document.body) {
+    showBody();
+  } else {
+    document.addEventListener('DOMContentLoaded', showBody);
+  }
 })();
 
 // Jos sessio katkeaa kesken kaiken (esim. uloskirjautuminen toisessa
