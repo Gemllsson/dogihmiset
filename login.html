@@ -11,15 +11,17 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0f1117;
-      --surface:  #1a1d27;
-      --border:   #2a2d3a;
-      --text:     #e8eaf0;
-      --muted:    #7a7f96;
-      --accent:   #f59e0b;
-      --accent2:  #d97706;
-      --danger:   #ef4444;
-      --danger-bg:#2d1212;
+      --bg:       #faf7f2;
+      --surface:  #ffffff;
+      --bg3:      #ede4d8;
+      --border:   #e0d4c4;
+      --text:     #2a1f14;
+      --muted:    #6b4f38;
+      --accent:   #d97706;
+      --accent2:  #b45309;
+      --danger:   #dc2626;
+      --danger-bg:#fee2e2;
+      --shadow:   0 1px 4px rgba(100,60,20,0.08);
     }
 
     body {
@@ -37,6 +39,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
+      box-shadow: var(--shadow);
       padding: 2rem 1.75rem;
       width: 100%;
       max-width: 340px;
