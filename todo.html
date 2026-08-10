@@ -122,6 +122,7 @@
   .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-family: 'IBM Plex Mono', monospace; }
+  .required { color: var(--danger); }
   input, select, textarea { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; padding: 7px 11px; font-family: inherit; font-size: 13px; outline: none; transition: border-color .15s; width: 100%; }
   input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   textarea { resize: vertical; min-height: 54px; }
@@ -194,16 +195,16 @@
   <div class="modal">
     <h2 id="todoModalTitle">Uusi tehtävä</h2>
     <div class="form-group">
-      <label>Otsikko</label>
+      <label>Otsikko <span class="required">*</span></label>
       <input type="text" id="fTodoTitle" placeholder="Esim. Osta maitoa">
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label>Eräpäivä (valinnainen)</label>
+        <label>Eräpäivä</label>
         <input type="date" id="fTodoDate">
       </div>
       <div class="form-group">
-        <label>Kellonaika (valinnainen)</label>
+        <label>Kellonaika</label>
         <input type="time" id="fTodoTime">
       </div>
     </div>
@@ -216,7 +217,7 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Muistiinpano (valinnainen)</label>
+      <label>Muistiinpano</label>
       <textarea id="fTodoNotes"></textarea>
     </div>
     <div class="form-group">
@@ -244,7 +245,7 @@
   <div class="modal">
     <h2>Uusi tarkistuslista</h2>
     <div class="form-group">
-      <label>Nimi</label>
+      <label>Nimi <span class="required">*</span></label>
       <input type="text" id="fChecklistName" placeholder="Esim. Kesäloman pakkauslista">
     </div>
     <div class="form-group">
