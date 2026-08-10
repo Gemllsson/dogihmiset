@@ -523,14 +523,13 @@ async function saveTodo() {
     }
     if (toAdd.length) {
       const rows = toAdd.map(uid => ({ todo_id: todoId, user_id: uid }));
-      const { error: pError } = await db.from('todo_participants')
-        .upsert(rows, { onConflict: 'todo_id,user_id', ignoreDuplicates: true });
-      if (pError) throw pError;
+      const { error: pError } = await db.from('todo_participants').insert(rows);
+      if (pError && pError.code !== '23505') throw pError;
     }
     if (!editingTodoId) {
       const { error: selfError } = await db.from('todo_participants')
-        .upsert([{ todo_id: todoId, user_id: window.currentUser.id }], { onConflict: 'todo_id,user_id', ignoreDuplicates: true });
-      if (selfError) throw selfError;
+        .insert([{ todo_id: todoId, user_id: window.currentUser.id }]);
+      if (selfError && selfError.code !== '23505') throw selfError;
     }
 
     closeTodoModal();
@@ -727,9 +726,8 @@ async function saveChecklist() {
     if (error) throw error;
 
     const rows = participantIds.map(uid => ({ checklist_id: data.id, user_id: uid }));
-    const { error: pError } = await db.from('checklist_participants')
-      .upsert(rows, { onConflict: 'checklist_id,user_id', ignoreDuplicates: true });
-    if (pError) throw pError;
+    const { error: pError } = await db.from('checklist_participants').insert(rows);
+    if (pError && pError.code !== '23505') throw pError;
 
     closeChecklistModal();
     await loadChecklists();
