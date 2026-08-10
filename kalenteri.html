@@ -91,6 +91,7 @@
   .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-family: 'IBM Plex Mono', monospace; }
+  .required { color: var(--danger); }
   input, select, textarea { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; padding: 7px 11px; font-family: inherit; font-size: 13px; outline: none; transition: border-color .15s; width: 100%; }
   input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   textarea { resize: vertical; min-height: 54px; }
@@ -200,26 +201,26 @@
   <div class="modal">
     <h2 id="eventModalTitle">Uusi merkintä</h2>
     <div class="form-group">
-      <label>Otsikko</label>
+      <label>Otsikko <span class="required">*</span></label>
       <input type="text" id="fTitle" placeholder="Esim. Autohuolto">
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label>Päivämäärä</label>
+        <label>Päivämäärä <span class="required">*</span></label>
         <input type="date" id="fDate">
       </div>
       <div class="form-group">
-        <label>Loppupäivä (valinnainen — usean päivän tapahtuma)</label>
+        <label>Loppupäivä</label>
         <input type="date" id="fEndDate" onchange="onEndDateChange()">
       </div>
     </div>
     <div class="form-row" id="timeRow">
       <div class="form-group">
-        <label>Alkaa klo (valinnainen)</label>
+        <label>Alkaa klo</label>
         <input type="time" id="fTime">
       </div>
       <div class="form-group">
-        <label>Päättyy klo (valinnainen)</label>
+        <label>Päättyy klo</label>
         <input type="time" id="fEndTime">
       </div>
     </div>
@@ -235,7 +236,7 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Muistiinpano (valinnainen)</label>
+      <label>Muistiinpano</label>
       <textarea id="fNotes"></textarea>
     </div>
     <div class="form-group">
