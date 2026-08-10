@@ -209,13 +209,19 @@
         <input type="date" id="fDate">
       </div>
       <div class="form-group">
-        <label>Kellonaika (valinnainen)</label>
-        <input type="time" id="fTime">
+        <label>Loppupäivä (valinnainen — usean päivän tapahtuma)</label>
+        <input type="date" id="fEndDate" onchange="onEndDateChange()">
       </div>
     </div>
-    <div class="form-group">
-      <label>Loppupäivä (valinnainen — vain jos merkintä kestää useita päiviä)</label>
-      <input type="date" id="fEndDate">
+    <div class="form-row" id="timeRow">
+      <div class="form-group">
+        <label>Alkaa klo (valinnainen)</label>
+        <input type="time" id="fTime">
+      </div>
+      <div class="form-group">
+        <label>Päättyy klo (valinnainen)</label>
+        <input type="time" id="fEndTime">
+      </div>
     </div>
     <div class="form-group">
       <label>Kategoria</label>
@@ -312,7 +318,7 @@ async function loadFamilyMembers() {
 async function loadEvents() {
   const { data, error } = await db
     .from('calendar_events')
-    .select('id, user_id, title, notes, event_date, event_time, end_date, category, calendar_event_participants(user_id)')
+    .select('id, user_id, title, notes, event_date, event_time, end_date, end_time, category, calendar_event_participants(user_id)')
     .order('event_date');
   if (error) { console.error(error); showToast('Virhe kalenterin haussa', 'error'); return; }
   events = data || [];
@@ -418,7 +424,9 @@ function buildEventChip(ev) {
   chip.style.background = cat.bg;
   chip.style.color = cat.fg;
   chip.style.borderLeftColor = cat.fg;
-  const timePrefix = ev.event_time ? ev.event_time.slice(0,5) + ' ' : '';
+  const timePrefix = ev.event_time
+    ? ev.event_time.slice(0,5) + (ev.end_time ? '–' + ev.end_time.slice(0,5) : '') + ' '
+    : '';
   const titleSpan = document.createElement('span');
   titleSpan.className = 'event-title';
   titleSpan.textContent = timePrefix + ev.title;
@@ -590,6 +598,15 @@ function setQuickParticipants(mode) {
   });
 }
 
+function onEndDateChange() {
+  const hasEndDate = !!document.getElementById('fEndDate').value;
+  document.getElementById('timeRow').style.display = hasEndDate ? 'none' : '';
+  if (hasEndDate) {
+    document.getElementById('fTime').value = '';
+    document.getElementById('fEndTime').value = '';
+  }
+}
+
 function openEventModal(ev, defaultDate) {
   editingEventId = ev ? ev.id : null;
   document.getElementById('eventModalTitle').textContent = ev ? 'Muokkaa merkintää' : 'Uusi merkintä';
@@ -597,6 +614,8 @@ function openEventModal(ev, defaultDate) {
   document.getElementById('fDate').value = ev ? ev.event_date : (defaultDate || dateStr(new Date()));
   document.getElementById('fEndDate').value = ev && ev.end_date ? ev.end_date : '';
   document.getElementById('fTime').value = ev && ev.event_time ? ev.event_time.slice(0,5) : '';
+  document.getElementById('fEndTime').value = ev && ev.end_time ? ev.end_time.slice(0,5) : '';
+  onEndDateChange();
   document.getElementById('fCategory').value = ev ? ev.category : 'meno';
   document.getElementById('fNotes').value = ev ? (ev.notes || '') : '';
   document.getElementById('fDeleteBtn').style.display = ev ? 'inline-flex' : 'none';
@@ -619,15 +638,20 @@ async function saveEvent() {
   const title = document.getElementById('fTitle').value.trim();
   const date  = document.getElementById('fDate').value;
   const endDate = document.getElementById('fEndDate').value || null;
+  const startTime = endDate ? null : (document.getElementById('fTime').value || null);
+  const endTime   = endDate ? null : (document.getElementById('fEndTime').value || null);
   if (!title) { showToast('Anna otsikko', 'error'); return; }
   if (!date)  { showToast('Anna päivämäärä', 'error'); return; }
   if (endDate && endDate < date) { showToast('Loppupäivä ei voi olla ennen alkupäivää', 'error'); return; }
+  if (endTime && startTime && endTime <= startTime) { showToast('Päättymisajan pitää olla alkamisajan jälkeen', 'error'); return; }
+  if (endTime && !startTime) { showToast('Anna myös alkamisaika', 'error'); return; }
 
   const payload = {
     title,
     event_date: date,
     end_date: endDate,
-    event_time: document.getElementById('fTime').value || null,
+    event_time: startTime,
+    end_time: endTime,
     category: document.getElementById('fCategory').value,
     notes: document.getElementById('fNotes').value.trim() || null,
   };
