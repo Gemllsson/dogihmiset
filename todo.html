@@ -272,6 +272,8 @@ let checklists = [];
 let showDone = false;
 let editingTodoId = null;
 let originalTodoParticipantIds = [];
+let editingChecklistId = null;
+let originalChecklistParticipantIds = [];
 
 const PRIORITY_LABEL = { high: 'Korkea', normal: 'Normaali', low: 'Matala' };
 
@@ -605,6 +607,13 @@ function renderChecklists() {
     progress.textContent = done + '/' + total;
     hdr.appendChild(progress);
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'todo-del';
+    editBtn.textContent = '✎';
+    editBtn.title = 'Muokkaa nimeä ja osallistujia';
+    editBtn.onclick = (e) => { e.stopPropagation(); openChecklistModal(list); };
+    hdr.appendChild(editBtn);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'todo-del';
     delBtn.textContent = '×';
@@ -702,9 +711,13 @@ async function deleteChecklist(id) {
   showToast('Lista poistettu', 'success');
 }
 
-function openChecklistModal() {
-  document.getElementById('fChecklistName').value = '';
-  renderParticipantsInto('checklistParticipantsList', []);
+function openChecklistModal(list) {
+  editingChecklistId = list ? list.id : null;
+  document.querySelector('#checklistModal h2').textContent = list ? 'Muokkaa listaa' : 'Uusi tarkistuslista';
+  document.getElementById('fChecklistName').value = list ? list.name : '';
+  const checkedIds = list ? (list.checklist_participants || []).map(p => p.user_id) : [];
+  originalChecklistParticipantIds = checkedIds.slice();
+  renderParticipantsInto('checklistParticipantsList', checkedIds);
   document.getElementById('checklistModal').classList.add('open');
   setTimeout(() => document.getElementById('fChecklistName').focus(), 100);
 }
@@ -721,18 +734,39 @@ async function saveChecklist() {
   if (!participantIds.includes(window.currentUser.id)) participantIds.push(window.currentUser.id);
 
   try {
-    const { data, error } = await db.from('checklists')
-      .insert([{ name, user_id: window.currentUser.id }]).select().single();
-    if (error) throw error;
+    let listId = editingChecklistId;
+    if (editingChecklistId) {
+      const { error } = await db.from('checklists').update({ name }).eq('id', editingChecklistId);
+      if (error) throw error;
 
-    const rows = participantIds.map(uid => ({ checklist_id: data.id, user_id: uid }));
-    const { error: pError } = await db.from('checklist_participants').insert(rows);
-    if (pError && pError.code !== '23505') throw pError;
+      const toRemove = originalChecklistParticipantIds.filter(id => !participantIds.includes(id));
+      const toAdd    = participantIds.filter(id => !originalChecklistParticipantIds.includes(id));
+
+      if (toRemove.length) {
+        const { error: rError } = await db.from('checklist_participants')
+          .delete().eq('checklist_id', listId).in('user_id', toRemove);
+        if (rError) throw rError;
+      }
+      if (toAdd.length) {
+        const rows = toAdd.map(uid => ({ checklist_id: listId, user_id: uid }));
+        const { error: pError } = await db.from('checklist_participants').insert(rows);
+        if (pError && pError.code !== '23505') throw pError;
+      }
+    } else {
+      const { data, error } = await db.from('checklists')
+        .insert([{ name, user_id: window.currentUser.id }]).select().single();
+      if (error) throw error;
+      listId = data.id;
+
+      const rows = participantIds.map(uid => ({ checklist_id: listId, user_id: uid }));
+      const { error: pError } = await db.from('checklist_participants').insert(rows);
+      if (pError && pError.code !== '23505') throw pError;
+    }
 
     closeChecklistModal();
     await loadChecklists();
     renderChecklists();
-    showToast('Lista luotu!', 'success');
+    showToast('Tallennettu!', 'success');
   } catch (e) {
     console.error(e);
     showToast('Virhe: ' + e.message, 'error');
