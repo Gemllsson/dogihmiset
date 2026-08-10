@@ -99,10 +99,16 @@
   .checklist-item { display: flex; align-items: center; gap: 10px; padding: 7px 14px; transition: background .1s; }
   .checklist-item:hover { background: var(--bg2); }
   .checklist-item.done .checklist-item-text { text-decoration: line-through; color: var(--muted2); }
-  .checklist-item-text { flex: 1; font-size: 13px; }
+  .checklist-item-text { flex: 1; font-size: 13px; text-align: left; }
+  .checklist-check { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); margin: 0; }
   .checklist-item-del { background: none; border: none; cursor: pointer; color: var(--muted2); font-size: 12px; padding: 2px 6px; opacity: 0; transition: opacity .1s; }
   .checklist-item:hover .checklist-item-del { opacity: 1; }
   .checklist-item-del:hover { color: var(--danger); }
+  .checklist-done-header { display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: var(--muted2); cursor: pointer; user-select: none; border-top: 1px solid var(--border); margin-top: 4px; }
+  .checklist-done-header .chevron { display: inline-block; transition: transform .15s; }
+  .checklist-done-header.collapsed .chevron { transform: rotate(-90deg); }
+  .done-count { background: var(--bg3); padding: 0 6px; border-radius: 99px; font-size: 10px; }
+  .checklist-done-wrap.collapsed { display: none; }
   .checklist-add { display: flex; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); }
   .checklist-add input { flex: 1; }
   .new-checklist-btn { width: 100%; margin-bottom: 12px; padding: 10px; border: 2px dashed var(--border2); border-radius: var(--radius); background: none; color: var(--muted2); font-size: 13px; cursor: pointer; transition: all .15s; font-family: inherit; }
@@ -624,26 +630,25 @@ function renderChecklists() {
     body.className = 'checklist-body';
     body.id = 'clbody-' + list.id;
 
-    list.checklist_items.forEach(item => {
-      const row = document.createElement('div');
-      row.className = 'checklist-item' + (item.is_done ? ' done' : '');
-      const icb = document.createElement('input');
-      icb.type = 'checkbox';
-      icb.style.accentColor = 'var(--accent)';
-      icb.checked = !!item.is_done;
-      icb.onchange = () => toggleChecklistItem(list.id, item.id, icb.checked);
-      const itext = document.createElement('span');
-      itext.className = 'checklist-item-text';
-      itext.textContent = item.text;
-      const idel = document.createElement('button');
-      idel.className = 'checklist-item-del';
-      idel.textContent = '×';
-      idel.onclick = () => deleteChecklistItem(list.id, item.id);
-      row.appendChild(icb);
-      row.appendChild(itext);
-      row.appendChild(idel);
-      body.appendChild(row);
-    });
+    const activeItems = list.checklist_items.filter(i => !i.is_done);
+    const doneItems   = list.checklist_items.filter(i => i.is_done);
+
+    activeItems.forEach(item => body.appendChild(buildChecklistItemRow(list.id, item)));
+
+    if (doneItems.length > 0) {
+      const doneHdr = document.createElement('div');
+      doneHdr.className = 'checklist-done-header';
+      doneHdr.innerHTML = '<span class="chevron">▾</span> Valmis <span class="done-count">' + doneItems.length + '</span>';
+      doneHdr.onclick = () => toggleDoneSection(list.id);
+
+      const doneWrap = document.createElement('div');
+      doneWrap.className = 'checklist-done-wrap';
+      doneWrap.id = 'cldone-' + list.id;
+      doneItems.forEach(item => doneWrap.appendChild(buildChecklistItemRow(list.id, item)));
+
+      body.appendChild(doneHdr);
+      body.appendChild(doneWrap);
+    }
 
     const addRow = document.createElement('div');
     addRow.className = 'checklist-add';
@@ -669,6 +674,35 @@ function renderChecklists() {
 function toggleChecklistBody(id) {
   const b = document.getElementById('clbody-' + id);
   if (b) b.style.display = (b.style.display === 'none') ? '' : 'none';
+}
+
+function toggleDoneSection(listId) {
+  const wrap = document.getElementById('cldone-' + listId);
+  if (!wrap) return;
+  const hdr = wrap.previousElementSibling;
+  wrap.classList.toggle('collapsed');
+  if (hdr) hdr.classList.toggle('collapsed');
+}
+
+function buildChecklistItemRow(listId, item) {
+  const row = document.createElement('div');
+  row.className = 'checklist-item' + (item.is_done ? ' done' : '');
+  const icb = document.createElement('input');
+  icb.type = 'checkbox';
+  icb.className = 'checklist-check';
+  icb.checked = !!item.is_done;
+  icb.onchange = () => toggleChecklistItem(listId, item.id, icb.checked);
+  const itext = document.createElement('span');
+  itext.className = 'checklist-item-text';
+  itext.textContent = item.text;
+  const idel = document.createElement('button');
+  idel.className = 'checklist-item-del';
+  idel.textContent = '×';
+  idel.onclick = () => deleteChecklistItem(listId, item.id);
+  row.appendChild(icb);
+  row.appendChild(itext);
+  row.appendChild(idel);
+  return row;
 }
 
 async function toggleChecklistItem(listId, itemId, done) {
