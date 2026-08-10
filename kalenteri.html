@@ -549,16 +549,15 @@ async function saveEvent() {
     }
     if (toAdd.length) {
       const rows = toAdd.map(uid => ({ event_id: eventId, user_id: uid }));
-      const { error: pError } = await db.from('calendar_event_participants')
-        .upsert(rows, { onConflict: 'event_id,user_id', ignoreDuplicates: true });
-      if (pError) throw pError;
+      const { error: pError } = await db.from('calendar_event_participants').insert(rows);
+      if (pError && pError.code !== '23505') throw pError;
     }
     if (!editingEventId) {
       // Uusi tapahtuma: varmistetaan että luoja on aina osallistujana, vaikka
       // toAdd ei jostain syystä sisältäisi häntä.
       const { error: selfError } = await db.from('calendar_event_participants')
-        .upsert([{ event_id: eventId, user_id: window.currentUser.id }], { onConflict: 'event_id,user_id', ignoreDuplicates: true });
-      if (selfError) throw selfError;
+        .insert([{ event_id: eventId, user_id: window.currentUser.id }]);
+      if (selfError && selfError.code !== '23505') throw selfError;
     }
 
     closeEventModal();
