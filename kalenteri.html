@@ -530,7 +530,8 @@ async function saveEvent() {
     if (editingEventId) {
       const { error } = await db.from('calendar_events').update(payload).eq('id', editingEventId);
       if (error) throw error;
-      await db.from('calendar_event_participants').delete().eq('event_id', editingEventId);
+      const { error: delError } = await db.from('calendar_event_participants').delete().eq('event_id', editingEventId);
+      if (delError) throw delError;
     } else {
       payload.user_id = window.currentUser.id;
       const { data, error } = await db.from('calendar_events').insert([payload]).select().single();
