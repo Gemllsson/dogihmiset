@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalenteri</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="auth-guard.js"></script>
+<style>
+  :root {
+    --bg:       #faf7f2;
+    --surface:  #ffffff;
+    --bg2:      #f3ede4;
+    --bg3:      #ede4d8;
+    --border:   #e0d4c4;
+    --border2:  #cfc0ac;
+    --text:     #2a1f14;
+    --muted:    #6b4f38;
+    --muted2:   #a08878;
+    --accent:   #d97706;
+    --accent2:  #b45309;
+    --accent-bg:rgba(217,119,6,0.10);
+    --danger:   #dc2626;
+    --ok:       #16a34a;
+    --shadow:   0 1px 4px rgba(100,60,20,0.08);
+    --radius:   6px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { visibility: hidden; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  header { background: var(--surface); border-bottom: 2px solid var(--accent); padding: 10px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+  header .logo { height: 32px; width: 32px; border-radius: 50%; object-fit: cover; }
+  .nav-menu-wrap { position: relative; }
+  .nav-btn { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 4px; cursor: pointer; letter-spacing: .04em; }
+  .nav-btn:hover { background: var(--bg3); }
+  .nav-dropdown { display: none; position: absolute; top: calc(100% + 6px); left: 0; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); min-width: 190px; z-index: 999; box-shadow: 0 4px 16px rgba(100,60,20,0.15); overflow: hidden; }
+  .nav-dropdown.open { display: block; }
+  .nav-item { display: block; padding: 8px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); text-decoration: none; transition: background .1s; }
+  .nav-item:hover { background: var(--accent-bg); color: var(--accent); }
+  .nav-item.current { color: var(--accent); font-weight: 600; }
+  header h1 { font-size: 16px; font-weight: 500; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .btn-logout { background: none; border: 1px solid var(--border2); color: var(--muted2); font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 4px; cursor: pointer; letter-spacing: .04em; transition: all .15s; }
+  .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+  .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .cal-nav-left { display: flex; align-items: center; gap: 10px; }
+  .cal-title { font-size: 22px; font-weight: 600; min-width: 220px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--border2); background: var(--surface); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; letter-spacing: .03em; }
+  .btn:hover { background: var(--bg2); color: var(--text); border-color: var(--accent); }
+  .btn-accent { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); color: white; }
+  .btn-danger { background: none; border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: white; }
+
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+  .cal-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
+  .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .cal-weekday { padding: 10px 8px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .cal-weekday.weekend { color: var(--muted2); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .cal-day { min-height: 104px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px; cursor: pointer; transition: background .1s; }
+  .cal-day:hover { background: var(--accent-bg); }
+  .cal-day:nth-child(7n) { border-right: none; }
+  .cal-day.other-month { background: var(--bg); color: var(--muted2); }
+  .cal-day.today { background: rgba(217,119,6,0.12); }
+  .cal-day.weekend { background: var(--bg2); }
+  .cal-day.weekend.other-month { background: var(--bg3); }
+  .day-number { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+  .day-number.today-num { color: var(--accent); }
+  .week-num { font-size: 10px; color: var(--muted2); font-weight: 400; }
+
+  .event { display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 3px; border-left: 3px solid; font-size: 11px; font-weight: 500; margin-bottom: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .1s; }
+  .event:hover { opacity: .8; }
+  .event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .event-dots { display: flex; gap: 2px; flex-shrink: 0; margin-left: auto; }
+  .p-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; align-items: center; justify-content: center; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; padding: 28px; width: 440px; max-width: 96vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(100,60,20,0.15); }
+  .modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-family: 'IBM Plex Mono', monospace; }
+  input, select, textarea { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; padding: 7px 11px; font-family: inherit; font-size: 13px; outline: none; transition: border-color .15s; width: 100%; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 54px; }
+
+  .participants-box { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg2); }
+  .participants-quick { display: flex; gap: 8px; margin-bottom: 8px; }
+  .participants-quick button { font-size: 10px; padding: 4px 8px; }
+  .participant-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .participant-row input { width: auto; }
+  .p-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  .form-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 20px; }
+  .form-actions-right { display: flex; gap: 10px; }
+
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 18px; font-size: 13px; z-index: 999; display: none; box-shadow: var(--shadow); }
+  #toast.success { border-color: var(--ok); color: var(--ok); }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+
+  .mobile-list { display: none; }
+  @media (max-width: 640px) {
+    .page { padding: 16px; }
+    .cal-wrap { display: none; }
+    .mobile-list { display: block; }
+    .cal-title { font-size: 18px; min-width: 0; }
+    .legend { display: none; }
+    .week-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+    .week-block-header { background: var(--bg2); padding: 8px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .week-block-body { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .week-block-empty { color: var(--muted2); font-size: 12px; padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="pikkukuva.png" alt="Perhe" class="logo">
+  <div class="nav-menu-wrap">
+    <button class="nav-btn" onclick="toggleNav(event)">☰ Valikko</button>
+    <div class="nav-dropdown" id="navDropdown">
+      <a class="nav-item" href="tunnit.html">🕐 Tunnit</a>
+      <a class="nav-item" href="yritykset.html">🏢 Yritykset</a>
+      <a class="nav-item current" href="kalenteri.html">📅 Kalenteri</a>
+      <a class="nav-item" href="todo.html">✅ Muistilista</a>
+    </div>
+  </div>
+  <h1>Kalenteri</h1>
+  <div class="header-right">
+    <button class="btn-logout" onclick="logout()">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<div class="page">
+
+  <div class="cal-nav">
+    <div class="cal-nav-left">
+      <button class="btn" onclick="prevMonth()">‹</button>
+      <div class="cal-title" id="calTitle">—</div>
+      <button class="btn" onclick="nextMonth()">›</button>
+      <button class="btn" onclick="goToday()">Tänään</button>
+      <button class="btn btn-accent" onclick="openEventModal(null)">+ Uusi merkintä</button>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="cal-wrap">
+    <div class="cal-weekdays">
+      <div class="cal-weekday">Ma</div>
+      <div class="cal-weekday">Ti</div>
+      <div class="cal-weekday">Ke</div>
+      <div class="cal-weekday">To</div>
+      <div class="cal-weekday">Pe</div>
+      <div class="cal-weekday weekend">La</div>
+      <div class="cal-weekday weekend">Su</div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <div class="mobile-list" id="mobileList"></div>
+
+</div>
+
+<!-- TAPAHTUMA-MODAL -->
+<div class="modal-backdrop" id="eventModal">
+  <div class="modal">
+    <h2 id="eventModalTitle">Uusi merkintä</h2>
+    <div class="form-group">
+      <label>Otsikko</label>
+      <input type="text" id="fTitle" placeholder="Esim. Autohuolto">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Päivämäärä</label>
+        <input type="date" id="fDate">
+      </div>
+      <div class="form-group">
+        <label>Kellonaika (valinnainen)</label>
+        <input type="time" id="fTime">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Kategoria</label>
+      <select id="fCategory">
+        <option value="koulu">Koulu</option>
+        <option value="harrastus">Harrastus</option>
+        <option value="juhla">Juhla</option>
+        <option value="meno" selected>Meno</option>
+        <option value="loma">Loma</option>
+        <option value="muu">Muu</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Muistiinpano (valinnainen)</label>
+      <textarea id="fNotes"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Näkyy</label>
+      <div class="participants-box">
+        <div class="participants-quick">
+          <button type="button" class="btn" onclick="setQuickParticipants('only')">Vain minä</button>
+          <button type="button" class="btn" onclick="setQuickParticipants('all')">Koko perhe</button>
+        </div>
+        <div id="participantsList"></div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-danger" id="fDeleteBtn" onclick="deleteEvent()" style="display:none;">Poista</button>
+      <div class="form-actions-right">
+        <button class="btn" onclick="closeEventModal()">Peruuta</button>
+        <button class="btn btn-accent" onclick="saveEvent()">Tallenna</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const db = supabaseClient;
+
+const CATEGORIES = {
+  koulu:     { label: 'Koulu',     bg: '#dbeafe', fg: '#1d4ed8' },
+  harrastus: { label: 'Harrastus', bg: '#dcfce7', fg: '#15803d' },
+  juhla:     { label: 'Juhla',     bg: '#fce7f3', fg: '#be185d' },
+  meno:      { label: 'Meno',      bg: '#fef3c7', fg: '#92400e' },
+  loma:      { label: 'Loma',      bg: '#cffafe', fg: '#0e7490' },
+  muu:       { label: 'Muu',       bg: '#ede4d8', fg: '#6b4f38' },
+};
+
+let viewYear  = new Date().getFullYear();
+let viewMonth = new Date().getMonth();
+let events = [];
+let familyMembers = [];
+let editingEventId = null;
+
+const MONTHS_FI = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu',
+                   'Heinäkuu','Elokuu','Syyskuu','Lokakuu','Marraskuu','Joulukuu'];
+
+function toggleNav(e) {
+  e.stopPropagation();
+  document.getElementById('navDropdown').classList.toggle('open');
+}
+document.addEventListener('click', () => document.getElementById('navDropdown').classList.remove('open'));
+
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+init();
+
+async function init() {
+  renderLegend();
+  await loadFamilyMembers();
+  await loadEvents();
+  renderCalendar();
+}
+
+function renderLegend() {
+  const legend = document.getElementById('legend');
+  legend.innerHTML = Object.values(CATEGORIES).map(c =>
+    `<div class="legend-item"><div class="legend-dot" style="background:${c.bg};border-left:3px solid ${c.fg};"></div>${c.label}</div>`
+  ).join('');
+}
+
+async function loadFamilyMembers() {
+  const { data, error } = await db.from('family_members').select('user_id, display_name, color');
+  if (error) { console.error(error); showToast('Virhe perheenjäsenten haussa', 'error'); return; }
+  familyMembers = data || [];
+}
+
+async function loadEvents() {
+  const { data, error } = await db
+    .from('calendar_events')
+    .select('id, user_id, title, notes, event_date, event_time, category, calendar_event_participants(user_id)')
+    .order('event_date');
+  if (error) { console.error(error); showToast('Virhe kalenterin haussa', 'error'); return; }
+  events = data || [];
+}
+
+function memberColor(userId) {
+  const m = familyMembers.find(f => f.user_id === userId);
+  return m ? m.color : '#a08878';
+}
+function memberName(userId) {
+  const m = familyMembers.find(f => f.user_id === userId);
+  return m ? m.display_name : '?';
+}
+
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return String(d.getUTCFullYear()) + '-' + String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7)).padStart(2, '0');
+}
+function getWeekNum(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+function dateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function renderCalendar() {
+  document.getElementById('calTitle').textContent = MONTHS_FI[viewMonth] + ' ' + viewYear;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
+
+  let startDow = firstDay.getDay() - 1;
+  if (startDow < 0) startDow = 6;
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  for (let i = 0; i < startDow; i++) {
+    const d = new Date(viewYear, viewMonth, -(startDow - 1 - i));
+    grid.appendChild(buildDayCell(d, true, today));
+  }
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const date = new Date(viewYear, viewMonth, d);
+    grid.appendChild(buildDayCell(date, false, today));
+  }
+  const totalCells = startDow + lastDay.getDate();
+  const remainder  = totalCells % 7;
+  if (remainder > 0) {
+    for (let i = 1; i <= 7 - remainder; i++) {
+      const d = new Date(viewYear, viewMonth + 1, i);
+      grid.appendChild(buildDayCell(d, true, today));
+    }
+  }
+
+  renderMobileList();
+}
+
+function buildDayCell(date, otherMonth, today) {
+  const cell = document.createElement('div');
+  const dow  = date.getDay();
+  const isWeekend = dow === 0 || dow === 6;
+  const isToday   = date.getTime() === today.getTime();
+  const isMonday  = (date.getDay() === 1);
+  const ds = dateStr(date);
+
+  cell.className = 'cal-day'
+    + (otherMonth ? ' other-month' : '')
+    + (isWeekend  ? ' weekend' : '')
+    + (isToday    ? ' today' : '');
+  cell.onclick = () => openEventModal(null, ds);
+
+  const numDiv = document.createElement('div');
+  numDiv.className = 'day-number' + (isToday ? ' today-num' : '');
+  numDiv.innerHTML = date.getDate() + (isMonday ? '<span class="week-num">vko ' + getWeekNum(date) + '</span>' : '');
+  cell.appendChild(numDiv);
+
+  events.filter(ev => ev.event_date === ds).forEach(ev => {
+    cell.appendChild(buildEventChip(ev));
+  });
+
+  return cell;
+}
+
+function buildEventChip(ev) {
+  const cat = CATEGORIES[ev.category] || CATEGORIES.muu;
+  const chip = document.createElement('div');
+  chip.className = 'event';
+  chip.style.background = cat.bg;
+  chip.style.color = cat.fg;
+  chip.style.borderLeftColor = cat.fg;
+  const timePrefix = ev.event_time ? ev.event_time.slice(0,5) + ' ' : '';
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'event-title';
+  titleSpan.textContent = timePrefix + ev.title;
+  chip.appendChild(titleSpan);
+
+  const dotsWrap = document.createElement('span');
+  dotsWrap.className = 'event-dots';
+  (ev.calendar_event_participants || []).forEach(p => {
+    const dot = document.createElement('span');
+    dot.className = 'p-dot';
+    dot.style.background = memberColor(p.user_id);
+    dot.title = memberName(p.user_id);
+    dotsWrap.appendChild(dot);
+  });
+  chip.appendChild(dotsWrap);
+
+  chip.onclick = (e) => { e.stopPropagation(); openEventModal(ev); };
+  chip.title = ev.title + (ev.notes ? '\n' + ev.notes : '');
+  return chip;
+}
+
+function renderMobileList() {
+  const list = document.getElementById('mobileList');
+  list.innerHTML = '';
+
+  const weeks = new Map();
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    const wk = getWeekNumber(new Date(d));
+    if (!weeks.has(wk)) weeks.set(wk, []);
+  }
+  events.forEach(ev => {
+    const d = new Date(ev.event_date + 'T00:00:00');
+    if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) return;
+    const wk = getWeekNumber(d);
+    if (weeks.has(wk)) weeks.get(wk).push(ev);
+  });
+
+  if (weeks.size === 0) {
+    list.innerHTML = '<div style="color:var(--muted2);text-align:center;padding:40px;">Ei merkintöjä</div>';
+    return;
+  }
+
+  weeks.forEach((weekEvents, wk) => {
+    const block = document.createElement('div');
+    block.className = 'week-block';
+    const wkNum = wk.split('-')[1];
+    block.innerHTML = '<div class="week-block-header">Viikko ' + wkNum + ' · ' + wk.split('-')[0] + '</div>';
+    const body = document.createElement('div');
+    body.className = 'week-block-body';
+    if (weekEvents.length === 0) {
+      body.innerHTML = '<div class="week-block-empty">Ei merkintöjä</div>';
+    } else {
+      weekEvents
+        .sort((a,b) => a.event_date.localeCompare(b.event_date))
+        .forEach(ev => body.appendChild(buildEventChip(ev)));
+    }
+    block.appendChild(body);
+    list.appendChild(block);
+  });
+}
+
+// ── Navigointi ─────────────────────────────────────────
+function prevMonth() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCalendar(); }
+function nextMonth() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCalendar(); }
+function goToday() { viewYear = new Date().getFullYear(); viewMonth = new Date().getMonth(); renderCalendar(); }
+
+// ── Modal ──────────────────────────────────────────────
+function renderParticipantsList(checkedIds) {
+  const wrap = document.getElementById('participantsList');
+  wrap.innerHTML = '';
+  familyMembers.forEach(m => {
+    const isSelf = m.user_id === window.currentUser.id;
+    const row = document.createElement('label');
+    row.className = 'participant-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = m.user_id;
+    cb.checked = checkedIds.includes(m.user_id) || isSelf;
+    if (isSelf) cb.disabled = true;
+    const swatch = document.createElement('span');
+    swatch.className = 'p-swatch';
+    swatch.style.background = m.color;
+    row.appendChild(cb);
+    row.appendChild(swatch);
+    row.appendChild(document.createTextNode(m.display_name + (isSelf ? ' (sinä)' : '')));
+    wrap.appendChild(row);
+  });
+}
+
+function setQuickParticipants(mode) {
+  const boxes = document.querySelectorAll('#participantsList input[type=checkbox]');
+  boxes.forEach(cb => {
+    if (cb.disabled) return;
+    cb.checked = (mode === 'all');
+  });
+}
+
+function openEventModal(ev, defaultDate) {
+  editingEventId = ev ? ev.id : null;
+  document.getElementById('eventModalTitle').textContent = ev ? 'Muokkaa merkintää' : 'Uusi merkintä';
+  document.getElementById('fTitle').value = ev ? ev.title : '';
+  document.getElementById('fDate').value = ev ? ev.event_date : (defaultDate || dateStr(new Date()));
+  document.getElementById('fTime').value = ev && ev.event_time ? ev.event_time.slice(0,5) : '';
+  document.getElementById('fCategory').value = ev ? ev.category : 'meno';
+  document.getElementById('fNotes').value = ev ? (ev.notes || '') : '';
+  document.getElementById('fDeleteBtn').style.display = ev ? 'inline-flex' : 'none';
+
+  const checkedIds = ev ? (ev.calendar_event_participants || []).map(p => p.user_id) : [];
+  renderParticipantsList(checkedIds);
+
+  document.getElementById('eventModal').classList.add('open');
+}
+
+function closeEventModal() {
+  document.getElementById('eventModal').classList.remove('open');
+}
+document.getElementById('eventModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('eventModal')) closeEventModal();
+});
+
+async function saveEvent() {
+  const title = document.getElementById('fTitle').value.trim();
+  const date  = document.getElementById('fDate').value;
+  if (!title) { showToast('Anna otsikko', 'error'); return; }
+  if (!date)  { showToast('Anna päivämäärä', 'error'); return; }
+
+  const payload = {
+    title,
+    event_date: date,
+    event_time: document.getElementById('fTime').value || null,
+    category: document.getElementById('fCategory').value,
+    notes: document.getElementById('fNotes').value.trim() || null,
+  };
+
+  const participantIds = Array.from(document.querySelectorAll('#participantsList input[type=checkbox]'))
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
+  if (!participantIds.includes(window.currentUser.id)) participantIds.push(window.currentUser.id);
+
+  try {
+    let eventId = editingEventId;
+    if (editingEventId) {
+      const { error } = await db.from('calendar_events').update(payload).eq('id', editingEventId);
+      if (error) throw error;
+      await db.from('calendar_event_participants').delete().eq('event_id', editingEventId);
+    } else {
+      payload.user_id = window.currentUser.id;
+      const { data, error } = await db.from('calendar_events').insert([payload]).select().single();
+      if (error) throw error;
+      eventId = data.id;
+    }
+    const rows = participantIds.map(uid => ({ event_id: eventId, user_id: uid }));
+    const { error: pError } = await db.from('calendar_event_participants').insert(rows);
+    if (pError) throw pError;
+
+    closeEventModal();
+    await loadEvents();
+    renderCalendar();
+    showToast('Tallennettu!', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('Virhe: ' + e.message, 'error');
+  }
+}
+
+async function deleteEvent() {
+  if (!editingEventId) return;
+  if (!confirm('Poistetaanko merkintä?')) return;
+  const { error } = await db.from('calendar_events').delete().eq('id', editingEventId);
+  if (error) { showToast('Virhe: ' + error.message, 'error'); return; }
+  closeEventModal();
+  await loadEvents();
+  renderCalendar();
+  showToast('Poistettu', 'success');
+}
+
+// ── Toast ──────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  clearTimeout(toastTimer);
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = type;
+  t.style.display = 'block';
+  toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+</script>
+</body>
+</html>
