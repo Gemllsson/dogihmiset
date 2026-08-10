@@ -56,6 +56,7 @@
   .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); color: white; }
   .btn-danger { background: none; border-color: var(--danger); color: var(--danger); }
   .btn-danger:hover { background: var(--danger); color: white; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
 
   .legend { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
@@ -115,10 +116,26 @@
     .mobile-list { display: block; }
     .cal-title { font-size: 18px; min-width: 0; }
     .legend { display: none; }
-    .week-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
-    .week-block-header { background: var(--bg2); padding: 8px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); }
-    .week-block-body { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
-    .week-block-empty { color: var(--muted2); font-size: 12px; padding: 8px 12px; }
+
+    .mobile-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-bottom: 14px; }
+    .mobile-mini-weekday { text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted2); padding-bottom: 4px; letter-spacing: .04em; }
+    .mobile-mini-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 4px; border-radius: 5px; cursor: pointer; transition: background .1s; }
+    .mobile-mini-day:active { background: var(--bg2); }
+    .mobile-mini-day.other-month { opacity: .35; }
+    .mobile-mini-day.today .mobile-mini-num { color: var(--accent); }
+    .mobile-mini-day.selected { background: var(--accent); }
+    .mobile-mini-day.selected .mobile-mini-num { color: white; }
+    .mobile-mini-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+    .mobile-mini-dots { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; justify-content: center; max-width: 26px; }
+    .mobile-mini-dots span { width: 4px; height: 4px; border-radius: 50%; }
+
+    .mobile-agenda-filter-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .mobile-agenda-filter-bar span { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+    .mobile-agenda-day { margin-bottom: 12px; }
+    .mobile-agenda-day-header { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 2px 6px; text-transform: uppercase; letter-spacing: .04em; }
+    .mobile-agenda-day-header.is-today { color: var(--accent); }
+    .mobile-agenda-empty { text-align: center; padding: 32px 16px; color: var(--muted2); font-size: 13px; border: 2px dashed var(--border); border-radius: var(--radius); }
   }
 </style>
 </head>
@@ -167,7 +184,14 @@
     <div class="cal-grid" id="calGrid"></div>
   </div>
 
-  <div class="mobile-list" id="mobileList"></div>
+  <div class="mobile-list" id="mobileList">
+    <div class="mobile-mini-grid" id="mobileMiniGrid"></div>
+    <div class="mobile-agenda-filter-bar" id="mobileFilterBar" style="display:none;">
+      <span id="mobileFilterLabel"></span>
+      <button class="btn btn-sm" onclick="clearMobileFilter()">Näytä koko kuukausi</button>
+    </div>
+    <div id="mobileAgenda"></div>
+  </div>
 
 </div>
 
@@ -243,6 +267,7 @@ let viewMonth = new Date().getMonth();
 let events = [];
 let familyMembers = [];
 let editingEventId = null;
+let selectedMobileDate = null;
 let originalParticipantIds = [];
 
 const MONTHS_FI = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu',
@@ -348,7 +373,8 @@ function renderCalendar() {
     }
   }
 
-  renderMobileList();
+  renderMobileMiniGrid();
+  renderMobileAgenda();
 }
 
 function buildDayCell(date, otherMonth, today) {
@@ -406,52 +432,126 @@ function buildEventChip(ev) {
   return chip;
 }
 
-function renderMobileList() {
-  const list = document.getElementById('mobileList');
-  list.innerHTML = '';
+function renderMobileMiniGrid() {
+  const grid = document.getElementById('mobileMiniGrid');
+  grid.innerHTML = '';
 
-  const weeks = new Map();
-  const firstDay = new Date(viewYear, viewMonth, 1);
-  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
-  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    const wk = getWeekNumber(new Date(d));
-    if (!weeks.has(wk)) weeks.set(wk, []);
-  }
-  events.forEach(ev => {
-    const d = new Date(ev.event_date + 'T00:00:00');
-    if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) return;
-    const wk = getWeekNumber(d);
-    if (weeks.has(wk)) weeks.get(wk).push(ev);
+  ['Ma','Ti','Ke','To','Pe','La','Su'].forEach(w => {
+    const el = document.createElement('div');
+    el.className = 'mobile-mini-weekday';
+    el.textContent = w;
+    grid.appendChild(el);
   });
 
-  if (weeks.size === 0) {
-    list.innerHTML = '<div style="color:var(--muted2);text-align:center;padding:40px;">Ei merkintöjä</div>';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
+  let startDow = firstDay.getDay() - 1;
+  if (startDow < 0) startDow = 6;
+
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push({ date: new Date(viewYear, viewMonth, -(startDow - 1 - i)), other: true });
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push({ date: new Date(viewYear, viewMonth, d), other: false });
+  const rem = cells.length % 7;
+  if (rem > 0) for (let i = 1; i <= 7 - rem; i++) cells.push({ date: new Date(viewYear, viewMonth + 1, i), other: true });
+
+  cells.forEach(c => {
+    const ds = dateStr(c.date);
+    const cell = document.createElement('div');
+    cell.className = 'mobile-mini-day'
+      + (c.other ? ' other-month' : '')
+      + (c.date.getTime() === today.getTime() ? ' today' : '')
+      + (selectedMobileDate === ds ? ' selected' : '');
+    cell.onclick = () => {
+      selectedMobileDate = (selectedMobileDate === ds) ? null : ds;
+      renderMobileMiniGrid();
+      renderMobileAgenda();
+    };
+
+    const num = document.createElement('div');
+    num.className = 'mobile-mini-num';
+    num.textContent = c.date.getDate();
+    cell.appendChild(num);
+
+    const dayEvents = events.filter(ev => ev.event_date === ds);
+    if (dayEvents.length) {
+      const dotsWrap = document.createElement('div');
+      dotsWrap.className = 'mobile-mini-dots';
+      dayEvents.slice(0, 4).forEach(ev => {
+        const cat = CATEGORIES[ev.category] || CATEGORIES.muu;
+        const dot = document.createElement('span');
+        dot.style.background = cat.fg;
+        dotsWrap.appendChild(dot);
+      });
+      cell.appendChild(dotsWrap);
+    }
+    grid.appendChild(cell);
+  });
+}
+
+function clearMobileFilter() {
+  selectedMobileDate = null;
+  renderMobileMiniGrid();
+  renderMobileAgenda();
+}
+
+function renderMobileAgenda() {
+  const wrap = document.getElementById('mobileAgenda');
+  const filterBar = document.getElementById('mobileFilterBar');
+  const filterLabel = document.getElementById('mobileFilterLabel');
+  wrap.innerHTML = '';
+
+  const todayDs = dateStr(new Date());
+  const WD = ['Su','Ma','Ti','Ke','To','Pe','La'];
+
+  let relevant;
+  if (selectedMobileDate) {
+    filterBar.style.display = 'flex';
+    const d = new Date(selectedMobileDate + 'T00:00:00');
+    filterLabel.textContent = WD[d.getDay()] + ' ' + d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear();
+    relevant = events.filter(ev => ev.event_date === selectedMobileDate);
+  } else {
+    filterBar.style.display = 'none';
+    relevant = events.filter(ev => {
+      const d = new Date(ev.event_date + 'T00:00:00');
+      return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
+    });
+  }
+
+  if (relevant.length === 0) {
+    wrap.innerHTML = '<div class="mobile-agenda-empty">Ei merkintöjä</div>';
     return;
   }
 
-  weeks.forEach((weekEvents, wk) => {
-    const block = document.createElement('div');
-    block.className = 'week-block';
-    const wkNum = wk.split('-')[1];
-    block.innerHTML = '<div class="week-block-header">Viikko ' + wkNum + ' · ' + wk.split('-')[0] + '</div>';
-    const body = document.createElement('div');
-    body.className = 'week-block-body';
-    if (weekEvents.length === 0) {
-      body.innerHTML = '<div class="week-block-empty">Ei merkintöjä</div>';
-    } else {
-      weekEvents
-        .sort((a,b) => a.event_date.localeCompare(b.event_date))
-        .forEach(ev => body.appendChild(buildEventChip(ev)));
-    }
-    block.appendChild(body);
-    list.appendChild(block);
+  const byDate = new Map();
+  relevant.forEach(ev => {
+    if (!byDate.has(ev.event_date)) byDate.set(ev.event_date, []);
+    byDate.get(ev.event_date).push(ev);
+  });
+
+  Array.from(byDate.keys()).sort().forEach(ds => {
+    const dayBlock = document.createElement('div');
+    dayBlock.className = 'mobile-agenda-day';
+    const d = new Date(ds + 'T00:00:00');
+    const header = document.createElement('div');
+    header.className = 'mobile-agenda-day-header' + (ds === todayDs ? ' is-today' : '');
+    header.textContent = WD[d.getDay()] + ' ' + d.getDate() + '.' + (d.getMonth()+1) + '.';
+    dayBlock.appendChild(header);
+
+    byDate.get(ds)
+      .sort((a,b) => (a.event_time||'').localeCompare(b.event_time||''))
+      .forEach(ev => dayBlock.appendChild(buildEventChip(ev)));
+
+    wrap.appendChild(dayBlock);
   });
 }
 
 // ── Navigointi ─────────────────────────────────────────
-function prevMonth() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCalendar(); }
-function nextMonth() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCalendar(); }
-function goToday() { viewYear = new Date().getFullYear(); viewMonth = new Date().getMonth(); renderCalendar(); }
+function prevMonth() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } selectedMobileDate = null; renderCalendar(); }
+function nextMonth() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } selectedMobileDate = null; renderCalendar(); }
+function goToday() { viewYear = new Date().getFullYear(); viewMonth = new Date().getMonth(); selectedMobileDate = null; renderCalendar(); }
 
 // ── Modal ──────────────────────────────────────────────
 function renderParticipantsList(checkedIds) {
