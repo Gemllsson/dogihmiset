@@ -243,6 +243,7 @@ let viewMonth = new Date().getMonth();
 let events = [];
 let familyMembers = [];
 let editingEventId = null;
+let originalParticipantIds = [];
 
 const MONTHS_FI = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu',
                    'Heinäkuu','Elokuu','Syyskuu','Lokakuu','Marraskuu','Joulukuu'];
@@ -494,6 +495,7 @@ function openEventModal(ev, defaultDate) {
   document.getElementById('fDeleteBtn').style.display = ev ? 'inline-flex' : 'none';
 
   const checkedIds = ev ? (ev.calendar_event_participants || []).map(p => p.user_id) : [];
+  originalParticipantIds = checkedIds.slice();
   renderParticipantsList(checkedIds);
 
   document.getElementById('eventModal').classList.add('open');
@@ -530,17 +532,34 @@ async function saveEvent() {
     if (editingEventId) {
       const { error } = await db.from('calendar_events').update(payload).eq('id', editingEventId);
       if (error) throw error;
-      const { error: delError } = await db.from('calendar_event_participants').delete().eq('event_id', editingEventId);
-      if (delError) throw delError;
     } else {
       payload.user_id = window.currentUser.id;
       const { data, error } = await db.from('calendar_events').insert([payload]).select().single();
       if (error) throw error;
       eventId = data.id;
     }
-    const rows = participantIds.map(uid => ({ event_id: eventId, user_id: uid }));
-    const { error: pError } = await db.from('calendar_event_participants').insert(rows);
-    if (pError) throw pError;
+
+    const toRemove = originalParticipantIds.filter(id => !participantIds.includes(id));
+    const toAdd    = participantIds.filter(id => !originalParticipantIds.includes(id));
+
+    if (toRemove.length) {
+      const { error: rError } = await db.from('calendar_event_participants')
+        .delete().eq('event_id', eventId).in('user_id', toRemove);
+      if (rError) throw rError;
+    }
+    if (toAdd.length) {
+      const rows = toAdd.map(uid => ({ event_id: eventId, user_id: uid }));
+      const { error: pError } = await db.from('calendar_event_participants')
+        .upsert(rows, { onConflict: 'event_id,user_id', ignoreDuplicates: true });
+      if (pError) throw pError;
+    }
+    if (!editingEventId) {
+      // Uusi tapahtuma: varmistetaan että luoja on aina osallistujana, vaikka
+      // toAdd ei jostain syystä sisältäisi häntä.
+      const { error: selfError } = await db.from('calendar_event_participants')
+        .upsert([{ event_id: eventId, user_id: window.currentUser.id }], { onConflict: 'event_id,user_id', ignoreDuplicates: true });
+      if (selfError) throw selfError;
+    }
 
     closeEventModal();
     await loadEvents();
