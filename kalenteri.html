@@ -214,6 +214,10 @@
       </div>
     </div>
     <div class="form-group">
+      <label>Loppupäivä (valinnainen — vain jos merkintä kestää useita päiviä)</label>
+      <input type="date" id="fEndDate">
+    </div>
+    <div class="form-group">
       <label>Kategoria</label>
       <select id="fCategory">
         <option value="koulu">Koulu</option>
@@ -308,7 +312,7 @@ async function loadFamilyMembers() {
 async function loadEvents() {
   const { data, error } = await db
     .from('calendar_events')
-    .select('id, user_id, title, notes, event_date, event_time, category, calendar_event_participants(user_id)')
+    .select('id, user_id, title, notes, event_date, event_time, end_date, category, calendar_event_participants(user_id)')
     .order('event_date');
   if (error) { console.error(error); showToast('Virhe kalenterin haussa', 'error'); return; }
   events = data || [];
@@ -339,6 +343,10 @@ function getWeekNum(date) {
 }
 function dateStr(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function occursOnDate(ev, ds) {
+  const end = ev.end_date || ev.event_date;
+  return ds >= ev.event_date && ds <= end;
 }
 
 function renderCalendar() {
@@ -396,7 +404,7 @@ function buildDayCell(date, otherMonth, today) {
   numDiv.innerHTML = date.getDate() + (isMonday ? '<span class="week-num">vko ' + getWeekNum(date) + '</span>' : '');
   cell.appendChild(numDiv);
 
-  events.filter(ev => ev.event_date === ds).forEach(ev => {
+  events.filter(ev => occursOnDate(ev, ds)).forEach(ev => {
     cell.appendChild(buildEventChip(ev));
   });
 
@@ -475,7 +483,7 @@ function renderMobileMiniGrid() {
     num.textContent = c.date.getDate();
     cell.appendChild(num);
 
-    const dayEvents = events.filter(ev => ev.event_date === ds);
+    const dayEvents = events.filter(ev => occursOnDate(ev, ds));
     if (dayEvents.length) {
       const dotsWrap = document.createElement('div');
       dotsWrap.className = 'mobile-mini-dots';
@@ -506,30 +514,28 @@ function renderMobileAgenda() {
   const todayDs = dateStr(new Date());
   const WD = ['Su','Ma','Ti','Ke','To','Pe','La'];
 
-  let relevant;
+  const byDate = new Map();
+
   if (selectedMobileDate) {
     filterBar.style.display = 'flex';
     const d = new Date(selectedMobileDate + 'T00:00:00');
     filterLabel.textContent = WD[d.getDay()] + ' ' + d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear();
-    relevant = events.filter(ev => ev.event_date === selectedMobileDate);
+    const matches = events.filter(ev => occursOnDate(ev, selectedMobileDate));
+    if (matches.length) byDate.set(selectedMobileDate, matches);
   } else {
     filterBar.style.display = 'none';
-    relevant = events.filter(ev => {
-      const d = new Date(ev.event_date + 'T00:00:00');
-      return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
-    });
+    const lastDay = new Date(viewYear, viewMonth + 1, 0).getDate();
+    for (let day = 1; day <= lastDay; day++) {
+      const ds = dateStr(new Date(viewYear, viewMonth, day));
+      const matches = events.filter(ev => occursOnDate(ev, ds));
+      if (matches.length) byDate.set(ds, matches);
+    }
   }
 
-  if (relevant.length === 0) {
+  if (byDate.size === 0) {
     wrap.innerHTML = '<div class="mobile-agenda-empty">Ei merkintöjä</div>';
     return;
   }
-
-  const byDate = new Map();
-  relevant.forEach(ev => {
-    if (!byDate.has(ev.event_date)) byDate.set(ev.event_date, []);
-    byDate.get(ev.event_date).push(ev);
-  });
 
   Array.from(byDate.keys()).sort().forEach(ds => {
     const dayBlock = document.createElement('div');
@@ -589,6 +595,7 @@ function openEventModal(ev, defaultDate) {
   document.getElementById('eventModalTitle').textContent = ev ? 'Muokkaa merkintää' : 'Uusi merkintä';
   document.getElementById('fTitle').value = ev ? ev.title : '';
   document.getElementById('fDate').value = ev ? ev.event_date : (defaultDate || dateStr(new Date()));
+  document.getElementById('fEndDate').value = ev && ev.end_date ? ev.end_date : '';
   document.getElementById('fTime').value = ev && ev.event_time ? ev.event_time.slice(0,5) : '';
   document.getElementById('fCategory').value = ev ? ev.category : 'meno';
   document.getElementById('fNotes').value = ev ? (ev.notes || '') : '';
@@ -611,12 +618,15 @@ document.getElementById('eventModal').addEventListener('click', e => {
 async function saveEvent() {
   const title = document.getElementById('fTitle').value.trim();
   const date  = document.getElementById('fDate').value;
+  const endDate = document.getElementById('fEndDate').value || null;
   if (!title) { showToast('Anna otsikko', 'error'); return; }
   if (!date)  { showToast('Anna päivämäärä', 'error'); return; }
+  if (endDate && endDate < date) { showToast('Loppupäivä ei voi olla ennen alkupäivää', 'error'); return; }
 
   const payload = {
     title,
     event_date: date,
+    end_date: endDate,
     event_time: document.getElementById('fTime').value || null,
     category: document.getElementById('fCategory').value,
     notes: document.getElementById('fNotes').value.trim() || null,
