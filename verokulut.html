@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verokulut — Tuntiseuranta</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth-guard.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #faf7f2;
+      --surface:  #ffffff;
+      --bg2:      #f3ede4;
+      --bg3:      #ede4d8;
+      --border:   #e0d4c4;
+      --text:     #2a1f14;
+      --muted:    #6b4f38;
+      --accent:   #d97706;
+      --accent2:  #b45309;
+      --danger:   #dc2626;
+      --danger-bg:#fee2e2;
+      --ok:       #16a34a;
+      --shadow:   0 1px 4px rgba(100,60,20,0.08);
+    }
+
+    body {
+      visibility: hidden; /* auth-guard.js näyttää kun kirjautuminen on varmistettu */
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── NAV ── */
+    nav {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 300;
+    }
+    nav h1 { font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 9px; }
+    .nav-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+    .nav-links { display: flex; gap: 4px; margin-left: 8px; }
+    .nav-link {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    .nav-link:hover { background: var(--bg2); color: var(--text); }
+    .nav-link.current { color: var(--accent); }
+    .ml-auto { margin-left: auto; }
+    .nav-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 4px;
+      cursor: pointer;
+    }
+    .nav-btn:hover { background: var(--bg2); }
+
+    /* ── PAGE ── */
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 3rem;
+    }
+
+    /* ── YRITYSVALINTA (chipit) ── */
+    .company-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 7px 13px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+    .chip .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+    .chip.active { color: var(--text); }
+    .chip:hover { border-color: var(--muted); }
+
+    /* ── TOOLBAR ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    input[type="date"], input[type="number"], input[type="text"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 4px;
+    }
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .btn:hover { background: var(--bg2); }
+    .btn-accent {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+    .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); }
+    .btn-small { font-size: 11px; padding: 5px 9px; }
+    .ml-auto { margin-left: auto; }
+
+    /* ── SUMMARY ── */
+    .summary-bar { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      padding: 0.6rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .summary-card .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .summary-card .value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .summary-warning {
+      font-size: 12px;
+      color: var(--danger);
+      margin-bottom: 1rem;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger);
+      border-radius: 4px;
+      padding: 7px 10px;
+    }
+
+    /* ── TABLE ── */
+    .expense-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 2rem; }
+    .expense-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .expense-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .expense-table tr.clickable:hover td { background: rgba(217,119,6,0.08); cursor: pointer; }
+    .expense-table td.num { font-family: 'IBM Plex Mono', monospace; }
+    .empty-state { color: var(--muted); font-size: 13px; padding: 1rem 0; }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-weight: 600;
+      background: rgba(217,119,6,0.12);
+      color: var(--accent);
+    }
+
+    /* ── MODAL ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(42,31,20,0.18);
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 1rem; }
+    .modal label {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 5px;
+      margin-top: 12px;
+    }
+    .modal label:first-of-type { margin-top: 0; }
+    .modal input[type="number"], .modal input[type="text"], .modal input[type="date"], .modal textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 4px;
+    }
+    .modal textarea { resize: vertical; min-height: 50px; }
+    .modal-row { display: flex; gap: 12px; }
+    .modal-row > div { flex: 1; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 1.25rem; flex-wrap: wrap; }
+    .btn-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+    .modal-actions .btn-danger { margin-right: auto; }
+
+    .km-helper {
+      background: var(--bg2);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .km-helper .helper-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .km-helper-row { display: flex; align-items: center; gap: 8px; }
+    .km-helper-row input { width: 70px; }
+    .km-helper-row span { font-size: 12px; color: var(--muted); }
+
+    /* ── KM-KORVAUS-ASETUKSET ── */
+    .rate-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .rate-row .year { width: 60px; font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+    .rate-row input[type="number"] { width: 90px; }
+    .rate-new-row { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); align-items: center; }
+    .rate-new-row input { width: 90px; }
+
+    @media (max-width: 600px) {
+      .summary-card .value { font-size: 1.1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1><img src="pikkukuva.png" alt="" class="nav-logo">Tuntiseuranta</h1>
+  <div class="nav-links">
+    <a class="nav-link" href="tunnit.html">Tunnit</a>
+    <a class="nav-link" href="yritykset.html">Yritykset</a>
+    <a class="nav-link current" href="verokulut.html">Verokulut</a>
+    <a class="nav-link" href="kalenteri.html">Kalenteri</a>
+    <a class="nav-link" href="todo.html">Muistilista</a>
+  </div>
+  <div class="ml-auto"></div>
+  <button class="nav-btn" onclick="logout()">Kirjaudu ulos</button>
+</nav>
+
+<div class="page">
+
+  <div class="company-chips" id="companyChips"></div>
+
+  <div class="toolbar">
+    <input type="date" id="dateFrom" onchange="onDateRangeChange()">
+    <span style="color:var(--muted)">–</span>
+    <input type="date" id="dateTo" onchange="onDateRangeChange()">
+    <button class="btn btn-small" onclick="clearDateRange()">Tyhjennä väli</button>
+    <button class="btn btn-small" onclick="setYearRange('current')">Tämä vuosi</button>
+    <button class="btn btn-small" onclick="setYearRange('previous')">Viime vuosi</button>
+    <div class="ml-auto"></div>
+    <button class="btn" onclick="openRatesModal()">Km-korvaukset</button>
+    <button class="btn btn-accent" onclick="openModal()">+ Lisää merkintä</button>
+  </div>
+
+  <div class="summary-warning" id="ratesWarning" style="display:none"></div>
+
+  <div class="summary-bar">
+    <div class="summary-card">
+      <span class="label">Kulut yhteensä</span>
+      <span class="value" id="sumAmount">0,00 €</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Kilometrit yhteensä</span>
+      <span class="value" id="sumKm">0</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Km-korvaus yhteensä</span>
+      <span class="value" id="sumKmCompensation">0,00 €</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Merkintöjä</span>
+      <span class="value" id="sumCount">0</span>
+    </div>
+  </div>
+
+  <table class="expense-table" id="expenseTable">
+    <thead>
+      <tr>
+        <th>Päivä</th>
+        <th>Kulu</th>
+        <th>Km</th>
+        <th>Selite</th>
+      </tr>
+    </thead>
+    <tbody id="expenseBody"></tbody>
+  </table>
+
+</div>
+
+<!-- ── LISÄÄ/MUOKKAA-MODAALI ── -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+  <div class="modal">
+    <h3 id="modalTitle">Lisää merkintä</h3>
+
+    <label for="fDate">Päivämäärä</label>
+    <input type="date" id="fDate">
+
+    <div class="modal-row">
+      <div>
+        <label for="fAmount">Kustannus (€)</label>
+        <input type="number" id="fAmount" step="0.01" min="0" placeholder="valinnainen">
+      </div>
+      <div>
+        <label for="fKm">Kilometrit</label>
+        <input type="number" id="fKm" step="0.1" min="0" placeholder="valinnainen">
+      </div>
+    </div>
+
+    <div class="km-helper">
+      <div class="helper-label">Kilometrilaskuri (valinnainen)</div>
+      <div class="km-helper-row">
+        <input type="number" id="fTimes" min="0" step="1" placeholder="kertoja">
+        <span>×</span>
+        <input type="number" id="fKmPerTime" min="0" step="0.1" placeholder="km/kerta">
+        <button class="btn btn-small" type="button" onclick="calcKmFromMultiplier()">→ täytä km</button>
+      </div>
+    </div>
+
+    <label for="fDescription">Selite / käyttötarkoitus</label>
+    <textarea id="fDescription" placeholder="esim. Verstaalle ja takaisin, 260 käyntikertaa vuoden aikana"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="deleteBtn" onclick="deleteExpense()" style="display:none">Poista</button>
+      <button class="btn" onclick="closeModal()">Peruuta</button>
+      <button class="btn btn-accent" onclick="saveExpense()">Tallenna</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── KM-KORVAUSASETUKSET-MODAALI ── -->
+<div class="modal-backdrop" id="ratesModalBackdrop" onclick="closeRatesModal(event)">
+  <div class="modal">
+    <h3>Kilometrikorvaukset vuosittain</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+      Verohallinnon vahvistama €/km-arvo per vuosi. Käytetään km-korvauksen laskemiseen yhteenvedossa.
+    </p>
+    <div id="ratesList"></div>
+    <div class="rate-new-row">
+      <input type="number" id="newRateYear" placeholder="vuosi" step="1">
+      <input type="number" id="newRateValue" placeholder="€/km" step="0.01" min="0">
+      <button class="btn btn-small" onclick="addRate()">+ Lisää vuosi</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRatesModal()">Sulje</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let companies = [];
+let selectedCompanyId = null;
+let expenses = [];
+let mileageRates = []; // [{year, rate_eur_per_km}]
+let editingId = null;
+
+// ── ALUSTUS ──
+async function init() {
+  const { data, error } = await supabaseClient
+    .from('companies')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    document.getElementById('companyChips').innerHTML = `<span style="color:var(--danger)">Virhe: ${error.message}</span>`;
+    return;
+  }
+
+  companies = data;
+
+  if (companies.length === 0) {
+    document.getElementById('companyChips').innerHTML =
+      `<span style="color:var(--muted);font-size:13px">Ei aktiivisia yrityksiä. Lisää yritys <a href="yritykset.html" style="color:var(--accent)">Yritykset-sivulla</a>.</span>`;
+    return;
+  }
+
+  const remembered = localStorage.getItem('vk_selected_company');
+  const stillActive = companies.find(c => c.id === remembered);
+  selectedCompanyId = stillActive ? remembered : companies[0].id;
+
+  renderChips();
+  await loadMileageRates();
+  await loadExpenses();
+}
+
+function renderChips() {
+  const el = document.getElementById('companyChips');
+  el.innerHTML = companies.map(c => `
+    <div class="chip ${c.id === selectedCompanyId ? 'active' : ''}" onclick="selectCompany('${c.id}')">
+      <span class="dot" style="background:${c.color || '#d97706'}"></span>
+      ${escapeHtml(c.name)}
+    </div>
+  `).join('');
+}
+
+async function selectCompany(id) {
+  selectedCompanyId = id;
+  localStorage.setItem('vk_selected_company', id);
+  renderChips();
+  await loadExpenses();
+}
+
+// ── AIKAVÄLI ──
+function onDateRangeChange() {
+  loadExpenses();
+}
+
+function clearDateRange() {
+  document.getElementById('dateFrom').value = '';
+  document.getElementById('dateTo').value = '';
+  loadExpenses();
+}
+
+function setYearRange(which) {
+  const now = new Date();
+  const year = which === 'previous' ? now.getFullYear() - 1 : now.getFullYear();
+  document.getElementById('dateFrom').value = `${year}-01-01`;
+  document.getElementById('dateTo').value   = `${year}-12-31`;
+  loadExpenses();
+}
+
+function formatDateFi(dateStr) {
+  const [y,m,d] = dateStr.split('-');
+  return `${parseInt(d)}.${parseInt(m)}.${y}`;
+}
+
+function formatEur(n) {
+  return (Math.round((n + Number.EPSILON) * 100) / 100).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+// ── LATAUS ──
+async function loadExpenses() {
+  if (!selectedCompanyId) return;
+  const from = document.getElementById('dateFrom').value;
+  const to   = document.getElementById('dateTo').value;
+
+  let query = supabaseClient
+    .from('expenses')
+    .select('*')
+    .eq('company_id', selectedCompanyId)
+    .order('entry_date', { ascending: false });
+
+  if (from) query = query.gte('entry_date', from);
+  if (to)   query = query.lte('entry_date', to);
+
+  const { data, error } = await query;
+
+  if (error) {
+    document.getElementById('expenseBody').innerHTML = `<tr><td colspan="4" style="color:var(--danger)">Virhe: ${error.message}</td></tr>`;
+    return;
+  }
+
+  expenses = data || [];
+  renderTable();
+  renderSummary();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('expenseBody');
+
+  if (expenses.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Ei merkintöjä valitulla aikavälillä.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = expenses.map(e => `
+    <tr class="clickable" onclick="openModal('${e.id}')">
+      <td><strong>${formatDateFi(e.entry_date)}</strong></td>
+      <td class="num">${e.amount != null ? formatEur(e.amount) : ''}</td>
+      <td class="num">${e.km != null ? '<span class="badge">' + e.km + ' km</span>' : ''}</td>
+      <td>${e.description ? escapeHtml(e.description) : ''}</td>
+    </tr>
+  `).join('');
+}
+
+function rateForYear(year) {
+  const r = mileageRates.find(r => r.year === year);
+  return r ? r.rate_eur_per_km : null;
+}
+
+function renderSummary() {
+  const totalAmount = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const totalKm     = expenses.reduce((s, e) => s + (parseFloat(e.km) || 0), 0);
+
+  let totalCompensation = 0;
+  const missingYears = new Set();
+
+  expenses.forEach(e => {
+    if (!e.km) return;
+    const year = parseInt(e.entry_date.slice(0, 4));
+    const rate = rateForYear(year);
+    if (rate == null) {
+      missingYears.add(year);
+    } else {
+      totalCompensation += parseFloat(e.km) * rate;
+    }
+  });
+
+  document.getElementById('sumAmount').textContent = formatEur(totalAmount);
+  document.getElementById('sumKm').textContent = Math.round(totalKm * 100) / 100;
+  document.getElementById('sumKmCompensation').textContent = formatEur(totalCompensation);
+  document.getElementById('sumCount').textContent = expenses.length;
+
+  const warningEl = document.getElementById('ratesWarning');
+  if (missingYears.size > 0) {
+    warningEl.style.display = 'block';
+    warningEl.textContent = `Km-korvausta ei laskettu vuosille: ${[...missingYears].sort().join(', ')} — lisää niille €/km-arvo "Km-korvaukset"-napista.`;
+  } else {
+    warningEl.style.display = 'none';
+  }
+}
+
+// ── LISÄÄ / MUOKKAA MERKINTÄ ──
+function openModal(id) {
+  editingId = id || null;
+  const e = editingId ? expenses.find(x => x.id === editingId) : null;
+
+  document.getElementById('modalTitle').textContent = editingId ? 'Muokkaa merkintää' : 'Lisää merkintä';
+  document.getElementById('fDate').value        = e ? e.entry_date : new Date().toISOString().slice(0,10);
+  document.getElementById('fAmount').value      = e && e.amount != null ? e.amount : '';
+  document.getElementById('fKm').value          = e && e.km != null ? e.km : '';
+  document.getElementById('fDescription').value = e && e.description ? e.description : '';
+  document.getElementById('fTimes').value       = '';
+  document.getElementById('fKmPerTime').value   = '';
+  document.getElementById('deleteBtn').style.display = editingId ? 'inline-block' : 'none';
+
+  document.getElementById('modalBackdrop').classList.add('open');
+  document.getElementById('fDate').focus();
+}
+
+function closeModal(evt) {
+  if (evt && evt.target !== document.getElementById('modalBackdrop')) return;
+  document.getElementById('modalBackdrop').classList.remove('open');
+  editingId = null;
+}
+
+function calcKmFromMultiplier() {
+  const times     = parseFloat(document.getElementById('fTimes').value) || 0;
+  const kmPerTime = parseFloat(document.getElementById('fKmPerTime').value) || 0;
+  if (times <= 0 || kmPerTime <= 0) {
+    alert('Täytä sekä kertoja että km/kerta.');
+    return;
+  }
+  const total = Math.round(times * kmPerTime * 100) / 100;
+  document.getElementById('fKm').value = total;
+}
+
+async function saveExpense() {
+  const entryDate   = document.getElementById('fDate').value;
+  const amountRaw   = document.getElementById('fAmount').value;
+  const kmRaw       = document.getElementById('fKm').value;
+  const description = document.getElementById('fDescription').value.trim() || null;
+
+  if (!entryDate) {
+    alert('Valitse päivämäärä.');
+    return;
+  }
+  if (amountRaw === '' && kmRaw === '') {
+    alert('Täytä joko kustannus tai kilometrit (tai molemmat).');
+    return;
+  }
+
+  const payload = {
+    user_id:      window.currentUser.id,
+    company_id:   selectedCompanyId,
+    entry_date:   entryDate,
+    amount:       amountRaw === '' ? null : parseFloat(amountRaw),
+    km:           kmRaw === '' ? null : parseFloat(kmRaw),
+    description:  description
+  };
+
+  let error;
+  if (editingId) {
+    ({ error } = await supabaseClient.from('expenses').update(payload).eq('id', editingId));
+  } else {
+    ({ error } = await supabaseClient.from('expenses').insert(payload));
+  }
+
+  if (error) {
+    alert('Virhe tallennuksessa: ' + error.message);
+    return;
+  }
+
+  document.getElementById('modalBackdrop').classList.remove('open');
+  await loadExpenses();
+}
+
+async function deleteExpense() {
+  if (!editingId) return;
+  if (!confirm('Poistetaanko merkintä?')) return;
+
+  const { error } = await supabaseClient.from('expenses').delete().eq('id', editingId);
+
+  if (error) {
+    alert('Poisto epäonnistui: ' + error.message);
+    return;
+  }
+
+  document.getElementById('modalBackdrop').classList.remove('open');
+  await loadExpenses();
+}
+
+// ── KM-KORVAUSASETUKSET ──
+async function loadMileageRates() {
+  const { data, error } = await supabaseClient
+    .from('mileage_rates')
+    .select('*')
+    .order('year', { ascending: false });
+
+  if (error) {
+    console.error('Km-korvausten lataus epäonnistui:', error.message);
+    mileageRates = [];
+    return;
+  }
+  mileageRates = data || [];
+}
+
+function openRatesModal() {
+  renderRatesList();
+  document.getElementById('ratesModalBackdrop').classList.add('open');
+}
+
+function closeRatesModal(evt) {
+  if (evt && evt.target !== document.getElementById('ratesModalBackdrop')) return;
+  document.getElementById('ratesModalBackdrop').classList.remove('open');
+}
+
+function renderRatesList() {
+  const el = document.getElementById('ratesList');
+  if (mileageRates.length === 0) {
+    el.innerHTML = `<p style="font-size:12.5px;color:var(--muted)">Ei vielä yhtään korvaustasoa.</p>`;
+    return;
+  }
+  el.innerHTML = mileageRates.map(r => `
+    <div class="rate-row">
+      <span class="year">${r.year}</span>
+      <input type="number" step="0.01" min="0" value="${r.rate_eur_per_km}" id="rate-${r.year}">
+      <button class="btn btn-small" onclick="saveRate(${r.year})">Tallenna</button>
+      <button class="btn btn-small btn-danger" onclick="deleteRate(${r.year})">Poista</button>
+    </div>
+  `).join('');
+}
+
+async function saveRate(year) {
+  const value = parseFloat(document.getElementById(`rate-${year}`).value);
+  if (isNaN(value) || value < 0) {
+    alert('Anna kelvollinen €/km-arvo.');
+    return;
+  }
+  const { error } = await supabaseClient
+    .from('mileage_rates')
+    .update({ rate_eur_per_km: value })
+    .eq('year', year);
+
+  if (error) {
+    alert('Tallennus epäonnistui: ' + error.message);
+    return;
+  }
+  await loadMileageRates();
+  renderRatesList();
+  renderSummary();
+}
+
+async function deleteRate(year) {
+  if (!confirm(`Poistetaanko vuoden ${year} korvaustaso?`)) return;
+  const { error } = await supabaseClient.from('mileage_rates').delete().eq('year', year);
+  if (error) {
+    alert('Poisto epäonnistui: ' + error.message);
+    return;
+  }
+  await loadMileageRates();
+  renderRatesList();
+  renderSummary();
+}
+
+async function addRate() {
+  const year  = parseInt(document.getElementById('newRateYear').value);
+  const value = parseFloat(document.getElementById('newRateValue').value);
+
+  if (isNaN(year) || year < 2000 || year > 2100) {
+    alert('Anna kelvollinen vuosi.');
+    return;
+  }
+  if (isNaN(value) || value < 0) {
+    alert('Anna kelvollinen €/km-arvo.');
+    return;
+  }
+  if (mileageRates.find(r => r.year === year)) {
+    alert('Tälle vuodelle on jo arvo — muokkaa sitä listassa.');
+    return;
+  }
+
+  const { error } = await supabaseClient
+    .from('mileage_rates')
+    .insert({ year, rate_eur_per_km: value });
+
+  if (error) {
+    alert('Lisäys epäonnistui: ' + error.message);
+    return;
+  }
+
+  document.getElementById('newRateYear').value = '';
+  document.getElementById('newRateValue').value = '';
+  await loadMileageRates();
+  renderRatesList();
+  renderSummary();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+init();
+</script>
+
+</body>
+</html>
