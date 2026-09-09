@@ -241,8 +241,28 @@
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: var(--text);
+      margin: 0;
+    }
+    .submissions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       margin-bottom: 0.7rem;
     }
+    .btn-link {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .btn-link:hover { color: var(--accent2); }
     .submission-row {
       display: flex;
       justify-content: space-between;
@@ -394,7 +414,10 @@
   <div class="company-chips" id="companyChips"></div>
 
   <div class="submissions-block">
-    <h3>Lähetyshistoria</h3>
+    <div class="submissions-header">
+      <h3>Lähetyshistoria</h3>
+      <button class="btn-link" id="submissionsToggleBtn" onclick="toggleSubmissionsHistory()" style="display:none"></button>
+    </div>
     <div id="submissionsList"></div>
   </div>
 
@@ -670,9 +693,14 @@ async function loadMonth() {
   renderSummary();
 }
 
+let allSubmissions = [];
+let submissionsExpanded = false;
+
 async function loadSubmissions() {
+  submissionsExpanded = false;
   const el = document.getElementById('submissionsList');
-  if (!selectedCompanyId) { el.innerHTML = ''; return; }
+  const toggleBtn = document.getElementById('submissionsToggleBtn');
+  if (!selectedCompanyId) { el.innerHTML = ''; toggleBtn.style.display = 'none'; return; }
 
   const { data, error } = await supabaseClient
     .from('submissions')
@@ -682,16 +710,42 @@ async function loadSubmissions() {
     .limit(10);
 
   if (error || !data || data.length === 0) {
+    allSubmissions = [];
     el.innerHTML = '<p style="color:var(--muted);font-size:12.5px">Ei vielä lähetyksiä tälle yritykselle.</p>';
+    toggleBtn.style.display = 'none';
     return;
   }
 
-  el.innerHTML = data.map(s => `
+  allSubmissions = data;
+  renderSubmissions();
+}
+
+function renderSubmissions() {
+  const el = document.getElementById('submissionsList');
+  const toggleBtn = document.getElementById('submissionsToggleBtn');
+
+  const rowsHtml = s => `
     <div class="submission-row">
       <span class="period">${formatDateFi(s.period_start)} – ${formatDateFi(s.period_end)}</span>
       <span class="meta">${s.total_hours}h · ylityö ${s.total_overtime}h · lähetetty ${formatDateFi(s.sent_at.slice(0,10))}</span>
-    </div>
-  `).join('');
+    </div>`;
+
+  const toShow = submissionsExpanded ? allSubmissions : allSubmissions.slice(0, 1);
+  el.innerHTML = toShow.map(rowsHtml).join('');
+
+  if (allSubmissions.length > 1) {
+    toggleBtn.style.display = 'inline-block';
+    toggleBtn.textContent = submissionsExpanded
+      ? 'Näytä vain viimeisin'
+      : `Näytä koko historia (${allSubmissions.length})`;
+  } else {
+    toggleBtn.style.display = 'none';
+  }
+}
+
+function toggleSubmissionsHistory() {
+  submissionsExpanded = !submissionsExpanded;
+  renderSubmissions();
 }
 
 function doPrint() { window.print(); }
