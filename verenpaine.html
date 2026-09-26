@@ -149,6 +149,12 @@
     .range-chip.active { border-color: var(--accent); color: var(--accent2); background: #fff7ea; }
 
     /* ── YHTEENVETO ── */
+    .range-custom { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: -0.4rem 0 0.6rem; }
+    .range-custom .lbl { margin: 0; }
+    .range-dates { flex: 1 1 100%; display: flex; gap: 8px; align-items: center; }
+    .range-dates input[type="date"] { flex: 1 1 0; min-width: 0; width: auto; padding: 8px 8px; }
+    .range-custom .sep { color: var(--muted); }
+    .range-caption { font-size: 12.5px; color: var(--muted); margin-bottom: 0.8rem; }
     .summary-bar { display: flex; gap: 0.6rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
     .summary-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
@@ -210,7 +216,7 @@
     @media print {
       @page { size: A4; margin: 10mm; }
       * { color: #000 !important; }
-      header, .entry-card, .range-bar, .chart-wrap, .more-wrap, .modal-backdrop, .screen-only { display: none !important; }
+      header, .entry-card, .range-bar, .range-custom, .range-caption, .chart-wrap, .more-wrap, .modal-backdrop, .screen-only { display: none !important; }
       body { visibility: visible !important; background: #fff; min-height: 0 !important; }
       .page { max-width: none; padding: 0; }
       .print-only { display: block; }
@@ -302,6 +308,17 @@
     <button class="btn" onclick="doPrint()">Tulosta / PDF</button>
   </div>
 
+  <div class="range-custom" id="customRange">
+    <label class="lbl" for="rFrom">Oma väli</label>
+    <button class="btn-link" style="margin-left:auto" onclick="setRange('all')">Tyhjennä</button>
+    <div class="range-dates">
+      <input type="date" id="rFrom" onchange="onCustomRange('from')" aria-label="Alkupäivä">
+      <span class="sep">–</span>
+      <input type="date" id="rTo" onchange="onCustomRange('to')" aria-label="Loppupäivä">
+    </div>
+  </div>
+  <div class="range-caption" id="rangeCaption"></div>
+
   <div class="print-header">
     <h2>Verenpaineseuranta</h2>
     <p id="printUser"></p>
@@ -368,7 +385,9 @@ const DAYS_FI = ['Su','Ma','Ti','Ke','To','Pe','La'];
 const PAGE_GROUPS = 40;   // montako mittauskertaa näytetään kerralla ruudulla
 
 let rows = [];            // kaikki lukemat
-let range = 'all';
+let range = 'all';      // 7 | 14 | 30 | 90 | year | all | custom
+let rangeFrom = '';     // käytössä kun range === 'custom'
+let rangeTo = '';
 let groupLimit = PAGE_GROUPS;
 let editingId = null;
 let lastNoteInput = null;
@@ -526,16 +545,17 @@ async function loadData() {
   render();
 }
 
-function rangeStart() {
-  if (range === 'all') return null;
+function rangeBounds() {
+  if (range === 'custom') return { from: rangeFrom || null, to: rangeTo || null };
+  if (range === 'all') return { from: null, to: null };
   const t = new Date(); t.setHours(0, 0, 0, 0);
-  if (range === 'year') return `${t.getFullYear()}-01-01`;
+  if (range === 'year') return { from: `${t.getFullYear()}-01-01`, to: null };
   t.setDate(t.getDate() - (parseInt(range, 10) - 1));
-  return isoDate(t);
+  return { from: isoDate(t), to: null };
 }
 function filtered() {
-  const start = rangeStart();
-  return rows.filter(r => !start || r.measured_on >= start);
+  const { from, to } = rangeBounds();
+  return rows.filter(r => (!from || r.measured_on >= from) && (!to || r.measured_on <= to));
 }
 function cmpRows(a, b) {
   if (a.measured_on !== b.measured_on) return a.measured_on < b.measured_on ? 1 : -1;
@@ -547,6 +567,8 @@ function cmpRows(a, b) {
 // ── RENDER ──
 function render() {
   document.querySelectorAll('#rangeBar .range-chip').forEach(c => c.classList.toggle('active', c.dataset.range === range));
+  document.getElementById('rFrom').value = range === 'custom' ? rangeFrom : '';
+  document.getElementById('rTo').value   = range === 'custom' ? rangeTo : '';
   const list = filtered().sort(cmpRows);
   renderPeriod(list);
   renderSummary(list);
@@ -556,9 +578,18 @@ function render() {
 
 function renderPeriod(list) {
   const el = document.getElementById('printPeriod');
-  if (!list.length) { el.textContent = 'Ei mittauksia valitulla aikavälillä'; return; }
-  const dates = list.map(r => r.measured_on).sort();
-  el.textContent = `Aikaväli: ${fmtDateNoDow(dates[0])} – ${fmtDateNoDow(dates[dates.length - 1])} · ${list.length} lukemaa`;
+  const cap = document.getElementById('rangeCaption');
+  const { from, to } = rangeBounds();
+  let text;
+  if (!list.length) {
+    text = 'Ei mittauksia valitulla aikavälillä';
+  } else {
+    const dates = list.map(r => r.measured_on).sort();
+    const a = from || dates[0], b = to || dates[dates.length - 1];
+    text = `Aikaväli: ${fmtDateNoDow(a)} – ${fmtDateNoDow(b)} · ${list.length} lukemaa`;
+  }
+  el.textContent = text;
+  cap.textContent = range === 'custom' ? text : '';
 }
 
 function renderSummary(list) {
@@ -669,10 +700,29 @@ function renderTable(list, showAll) {
 
 function showMore() { groupLimit += PAGE_GROUPS; renderTable(null, false); }
 
+function saveRange() {
+  try {
+    localStorage.setItem('bp_range', range);
+    localStorage.setItem('bp_from', rangeFrom);
+    localStorage.setItem('bp_to', rangeTo);
+  } catch (e) {}
+}
 function setRange(r) {
   range = r;
+  rangeFrom = ''; rangeTo = '';
   groupLimit = PAGE_GROUPS;
-  try { localStorage.setItem('bp_range', r); } catch (e) {}
+  saveRange();
+  render();
+}
+function onCustomRange(changed) {
+  let f = document.getElementById('rFrom').value;
+  let t = document.getElementById('rTo').value;
+  if (!f && !t) { setRange('all'); return; }
+  // jos alku on loppua myöhemmin, uusin valinta jää voimaan ja toinen raja tyhjenee (avoin väli)
+  if (f && t && f > t) { if (changed === 'from') t = ''; else f = ''; }
+  range = 'custom'; rangeFrom = f; rangeTo = t;
+  groupLimit = PAGE_GROUPS;
+  saveRange();
   render();
 }
 document.getElementById('rangeBar').addEventListener('click', e => {
@@ -765,7 +815,15 @@ async function loadUserName() {
 }
 
 function init() {
-  try { const r = localStorage.getItem('bp_range'); if (r) range = r; } catch (e) {}
+  try {
+    const r = localStorage.getItem('bp_range');
+    if (r) range = r;
+    if (range === 'custom') {
+      rangeFrom = localStorage.getItem('bp_from') || '';
+      rangeTo = localStorage.getItem('bp_to') || '';
+      if (!rangeFrom && !rangeTo) range = 'all';
+    }
+  } catch (e) {}
   document.getElementById('eDate').value = todayStr();
   document.getElementById('eTime').value = nowTime();
   resetReadings(2);
