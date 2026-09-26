@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verenpaine — Tuntiseuranta</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="auth-guard.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #faf7f2;
+      --surface:  #ffffff;
+      --bg2:      #f3ede4;
+      --bg3:      #ede4d8;
+      --border:   #e0d4c4;
+      --text:     #2a1f14;
+      --muted:    #6b4f38;
+      --accent:   #d97706;
+      --accent2:  #b45309;
+      --danger:   #dc2626;
+      --danger-bg:#fee2e2;
+      --ok:       #16a34a;
+      --shadow:   0 1px 4px rgba(100,60,20,0.08);
+    }
+
+    body {
+      visibility: hidden; /* auth-guard.js näyttää kun kirjautuminen on varmistettu */
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── NAV ── */
+    nav {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 300;
+    }
+    nav h1 { font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 9px; }
+    .nav-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+    .nav-links { display: flex; gap: 4px; margin-left: 8px; flex-wrap: wrap; }
+    .nav-link {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    .nav-link:hover { background: var(--bg2); color: var(--text); }
+    .nav-link.current { color: var(--accent); }
+    .ml-auto { margin-left: auto; }
+    .nav-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 4px;
+      cursor: pointer;
+    }
+    .nav-btn:hover { background: var(--bg2); }
+
+    /* ── PAGE ── */
+    .page { max-width: 900px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 1rem 1.1rem 1.1rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 0.8rem;
+    }
+
+    label.lbl {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    input[type="number"], input[type="text"], input[type="date"], input[type="time"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 16px; /* 16px estää iOS:n zoomauksen */
+      padding: 9px 10px;
+      border-radius: 6px;
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .num-in { font-family: 'IBM Plex Mono', monospace; font-size: 20px; text-align: center; padding: 10px 4px; }
+
+    .dt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .reading { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 10px; }
+    .reading:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+    .reading-vals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px; }
+    .reading-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+    .chip-note {
+      background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 13px;
+      padding: 6px 11px; border-radius: 999px; cursor: pointer;
+    }
+    .chip-note:active { background: var(--bg3); }
+    .chips-hint { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      padding: 9px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .btn:hover { background: var(--bg2); }
+    .btn-accent { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); margin-right: auto; }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+    .btn-link {
+      background: none; border: none; color: var(--accent);
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+      cursor: pointer; padding: 6px 0; text-decoration: underline; text-underline-offset: 2px;
+    }
+    .actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+    .actions .btn-accent { margin-left: auto; padding: 11px 22px; font-size: 14px; }
+    .form-msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .form-msg.err { color: var(--danger); }
+    .form-msg.ok  { color: var(--ok); }
+
+    /* ── AIKAVÄLI ── */
+    .range-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+    .range-chip {
+      background: var(--surface); border: 1.5px solid var(--border); color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    }
+    .range-chip.active { border-color: var(--accent); color: var(--accent2); background: #fff7ea; }
+
+    /* ── YHTEENVETO ── */
+    .summary-bar { display: flex; gap: 0.6rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+    .summary-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      box-shadow: var(--shadow); padding: 0.5rem 0.9rem;
+      display: flex; flex-direction: column; gap: 2px;
+      flex: 1 1 120px;
+    }
+    .summary-card .label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .summary-card .value { font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+    .summary-card .sub { font-size: 11px; color: var(--muted); }
+
+    .chart-wrap { position: relative; height: 230px; margin-bottom: 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 10px 4px; }
+    .chart-empty { color: var(--muted); font-size: 13px; padding: 1rem 0; }
+
+    /* ── TAULUKKO ── */
+    .bp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; background: var(--surface); }
+    .bp-table th {
+      text-align: left; padding: 8px 10px;
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .bp-table td { padding: 7px 10px; vertical-align: middle; }
+    .bp-table tr.grp-start td { border-top: 1px solid var(--border); }
+    .bp-table tbody tr:first-child td { border-top: none; }
+    .bp-table tr.clickable { cursor: pointer; }
+    .bp-table tr.clickable:hover td { background: rgba(217,119,6,0.08); }
+    .bp-table th.num, .bp-table td.num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+    .bp-table td.nowrap, .bp-table th.nowrap { white-space: nowrap; }
+    .bp-table td.date { font-weight: 600; }
+    .bp-table td.note { color: var(--muted); font-size: 12.5px; }
+    .empty-row td { text-align: center; color: var(--muted); padding: 1.5rem 0 !important; }
+    .more-wrap { text-align: center; margin-top: 1rem; }
+    .print-only { display: none; }
+
+    /* ── MODAL ── */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      z-index: 500; align-items: center; justify-content: center; padding: 12px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(42,31,20,0.18); padding: 1.25rem;
+      width: 100%; max-width: 400px; max-height: 95vh; overflow-y: auto;
+    }
+    .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 1rem; }
+    .modal .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+    .modal .lbl { margin-top: 12px; }
+    .modal .dt-row .lbl { margin-top: 0; }
+    .modal .row3 .lbl { margin-top: 0; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 1.25rem; flex-wrap: wrap; }
+
+    /* ── PRINT ── */
+    .print-header { display: none; }
+    @media print {
+      @page { size: A4; margin: 10mm; }
+      * { color: #000 !important; }
+      nav, .entry-card, .range-bar, .chart-wrap, .more-wrap, .modal-backdrop, .screen-only { display: none !important; }
+      body { visibility: visible !important; background: #fff; min-height: 0 !important; }
+      .page { max-width: none; padding: 0; }
+      .print-only { display: block; }
+      .print-header { display: block; margin-bottom: 0.7rem; border-bottom: 2px solid #000; padding-bottom: 0.4rem; }
+      .print-header h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.1rem; }
+      .print-header p  { font-size: 0.85rem; margin: 0; }
+      .summary-bar { flex-wrap: nowrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+      .summary-card { box-shadow: none; border: 1px solid #ccc; padding: 0.3rem 0.5rem; flex: 1 1 0; }
+      .summary-card .value { font-size: 1rem; color: #000; }
+      .summary-card .label { font-size: 7.5pt; }
+      .summary-card .sub { font-size: 7.5pt; }
+      .bp-table { font-size: 10.5pt; }
+      .bp-table thead { display: table-header-group; }
+      .bp-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .bp-table th { border-bottom: 1px solid #000; padding: 4px 8px; }
+      .bp-table td { padding: 3px 8px; border-top: none; }
+      .bp-table tr.grp-start td { border-top: 1px solid #000; }
+      .bp-table tbody tr:first-child td { border-top: none; }
+    }
+
+    @media (max-width: 700px) {
+      nav { padding: 8px 12px; }
+      .nav-links { order: 3; width: 100%; margin-left: 0; }
+      .page { padding: 0.9rem 0.75rem 3rem; }
+      .bp-table { font-size: 0.82rem; }
+      .bp-table th, .bp-table td { padding: 6px 5px; }
+      .bp-table td.note { font-size: 11.5px; }
+      .summary-card { flex: 1 1 42%; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1><img src="pikkukuva.png" alt="" class="nav-logo">Tuntiseuranta</h1>
+  <div class="nav-links">
+    <a class="nav-link" href="tunnit.html">Tunnit</a>
+    <a class="nav-link" href="yritykset.html">Yritykset</a>
+    <a class="nav-link" href="verokulut.html">Verokulut</a>
+    <a class="nav-link" href="kalenteri.html">Kalenteri</a>
+    <a class="nav-link" href="todo.html">Muistilista</a>
+    <a class="nav-link current" href="verenpaine.html">Verenpaine</a>
+  </div>
+  <div class="ml-auto"></div>
+  <button class="nav-btn" onclick="logout()">Kirjaudu ulos</button>
+</nav>
+
+<div class="page">
+
+  <!-- ── UUSI MITTAUS ── -->
+  <div class="card entry-card">
+    <h2>Uusi mittaus</h2>
+    <div class="dt-row">
+      <div><label class="lbl" for="eDate">Päivä</label><input type="date" id="eDate"></div>
+      <div><label class="lbl" for="eTime">Klo</label><input type="time" id="eTime"></div>
+    </div>
+
+    <div id="readings"></div>
+
+    <div class="chips-hint">Pikahuomio (lisätään viimeksi valitun lukeman huomioon):</div>
+    <div class="chips" id="noteChips">
+      <button type="button" class="chip-note" data-note="pötköllään">pötköllään</button>
+      <button type="button" class="chip-note" data-note="istuen">istuen</button>
+      <button type="button" class="chip-note" data-note="oikea käsi">oikea käsi</button>
+      <button type="button" class="chip-note" data-note="vasen käsi">vasen käsi</button>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn" onclick="addReading()">+ Lukema</button>
+      <button type="button" class="btn" id="removeBtn" onclick="removeReading()">− Poista</button>
+      <button type="button" class="btn btn-accent" id="saveBtn" onclick="saveNew()">Tallenna</button>
+    </div>
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+
+  <!-- ── AIKAVÄLI ── -->
+  <div class="range-bar" id="rangeBar">
+    <button class="range-chip" data-range="7">7 pv</button>
+    <button class="range-chip" data-range="14">14 pv</button>
+    <button class="range-chip" data-range="30">30 pv</button>
+    <button class="range-chip" data-range="90">90 pv</button>
+    <button class="range-chip" data-range="year">Tämä vuosi</button>
+    <button class="range-chip" data-range="all">Kaikki</button>
+    <div class="ml-auto"></div>
+    <button class="btn" onclick="doPrint()">Tulosta / PDF</button>
+  </div>
+
+  <div class="print-header">
+    <h2>Verenpaineseuranta</h2>
+    <p>Tomi Törnvall</p>
+    <p id="printPeriod"></p>
+  </div>
+
+  <div class="summary-bar" id="summaryBar"></div>
+
+  <div class="chart-wrap" id="chartWrap"><canvas id="bpChart"></canvas></div>
+
+  <div id="loadMsg" class="form-msg"></div>
+
+  <table class="bp-table">
+    <thead>
+      <tr>
+        <th class="nowrap">Päivä</th>
+        <th class="nowrap">Klo</th>
+        <th class="num">Ylä</th>
+        <th class="num">Ala</th>
+        <th class="num">Syke</th>
+        <th>Huomio</th>
+      </tr>
+    </thead>
+    <tbody id="bpBody"></tbody>
+  </table>
+  <div class="more-wrap" id="moreWrap" style="display:none">
+    <button class="btn" id="moreBtn" onclick="showMore()">Näytä lisää</button>
+  </div>
+
+</div>
+
+<!-- ── MUOKKAUSMODAALI ── -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+  <div class="modal">
+    <h3>Muokkaa lukemaa</h3>
+    <div class="dt-row">
+      <div><label class="lbl" for="mDate">Päivä</label><input type="date" id="mDate"></div>
+      <div><label class="lbl" for="mTime">Klo</label><input type="time" id="mTime"></div>
+    </div>
+    <div class="row3">
+      <div><label class="lbl" for="mSys">Ylä</label><input type="number" class="num-in" id="mSys" inputmode="numeric"></div>
+      <div><label class="lbl" for="mDia">Ala</label><input type="number" class="num-in" id="mDia" inputmode="numeric"></div>
+      <div><label class="lbl" for="mPulse">Syke</label><input type="number" class="num-in" id="mPulse" inputmode="numeric"></div>
+    </div>
+    <label class="lbl" for="mNote">Huomio</label>
+    <input type="text" id="mNote" autocomplete="off">
+    <div class="form-msg" id="modalMsg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteReading()">Poista</button>
+      <button class="btn" onclick="closeModal()">Peruuta</button>
+      <button class="btn btn-accent" id="modalSaveBtn" onclick="saveEdit()">Tallenna</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DAYS_FI = ['Su','Ma','Ti','Ke','To','Pe','La'];
+const PAGE_GROUPS = 40;   // montako mittauskertaa näytetään kerralla ruudulla
+
+let rows = [];            // kaikki lukemat
+let range = 'all';
+let groupLimit = PAGE_GROUPS;
+let editingId = null;
+let lastNoteInput = null;
+let chart = null;
+
+// ── APUFUNKTIOT ──
+const pad = n => String(n).padStart(2, '0');
+function isoDate(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function todayStr() { return isoDate(new Date()); }
+function nowTime() { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtDate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return `${DAYS_FI[new Date(y, m-1, d).getDay()]} ${d}.${m}.${y}`;
+}
+function fmtDateNoDow(s) { const [y, m, d] = s.split('-').map(Number); return `${d}.${m}.${y}`; }
+function fmtShort(s) { const [y, m, d] = s.split('-').map(Number); return `${d}.${m}.${String(y).slice(2)}`; }
+function hhmm(t) { return t ? t.slice(0, 5) : ''; }
+function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str ?? ''; return div.innerHTML; }
+const avg = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+const f0 = x => x == null ? '–' : String(Math.round(x));
+function isMorning(r) { return r.measured_time && r.measured_time < '12:00:00'; }
+function isEvening(r) { return r.measured_time && r.measured_time >= '12:00:00'; }
+
+// ── LUKEMAKENTÄT (uusi mittaus) ──
+function readingHtml(i) {
+  return `<div class="reading" data-i="${i}">
+    <div class="reading-title">Lukema ${i + 1}</div>
+    <div class="reading-vals">
+      <div><label class="lbl">Ylä</label><input type="number" class="num-in r-sys" inputmode="numeric" enterkeyhint="next" min="0"></div>
+      <div><label class="lbl">Ala</label><input type="number" class="num-in r-dia" inputmode="numeric" enterkeyhint="next" min="0"></div>
+      <div><label class="lbl">Syke</label><input type="number" class="num-in r-pulse" inputmode="numeric" enterkeyhint="done" min="0"></div>
+    </div>
+    <input type="text" class="r-note" placeholder="Huomio (valinnainen)" autocomplete="off">
+  </div>`;
+}
+function resetReadings(n = 2) {
+  const el = document.getElementById('readings');
+  el.innerHTML = Array.from({ length: n }, (_, i) => readingHtml(i)).join('');
+  bindNoteFocus();
+  lastNoteInput = el.querySelector('.r-note');
+  updateRemoveBtn();
+}
+function addReading() {
+  const el = document.getElementById('readings');
+  const n = el.querySelectorAll('.reading').length;
+  if (n >= 6) return;
+  el.insertAdjacentHTML('beforeend', readingHtml(n));
+  bindNoteFocus();
+  updateRemoveBtn();
+  el.querySelectorAll('.reading')[n].querySelector('.r-sys').focus();
+}
+function removeReading() {
+  const el = document.getElementById('readings');
+  const items = el.querySelectorAll('.reading');
+  if (items.length <= 1) return;
+  items[items.length - 1].remove();
+  lastNoteInput = el.querySelector('.reading:last-child .r-note');
+  updateRemoveBtn();
+}
+function updateRemoveBtn() {
+  const n = document.querySelectorAll('#readings .reading').length;
+  document.getElementById('removeBtn').disabled = n <= 1;
+}
+function bindNoteFocus() { /* kohdistus hoidetaan focusin-kuuntelijalla alla */ }
+// pikahuomio menee sen lukeman huomioon, jonka mitä tahansa kenttää viimeksi käytettiin
+document.getElementById('readings').addEventListener('focusin', e => {
+  const rd = e.target.closest('.reading');
+  if (rd) lastNoteInput = rd.querySelector('.r-note');
+});
+document.getElementById('noteChips').addEventListener('click', e => {
+  const b = e.target.closest('.chip-note');
+  if (!b) return;
+  const inp = lastNoteInput || document.querySelector('#readings .r-note');
+  if (!inp) return;
+  const add = b.dataset.note;
+  const cur = inp.value.trim();
+  if (cur.split(/,\s*/).includes(add)) return;
+  inp.value = cur ? `${cur}, ${add}` : add;
+});
+
+function setMsg(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.className = 'form-msg' + (kind ? ' ' + kind : '');
+}
+
+function validateReading(sys, dia, pulse) {
+  if (sys < 50 || sys > 300) return 'Ylä-arvon pitää olla 50–300.';
+  if (dia < 30 || dia > 200) return 'Ala-arvon pitää olla 30–200.';
+  if (pulse != null && (pulse < 20 || pulse > 250)) return 'Sykkeen pitää olla 20–250.';
+  if (dia >= sys) return 'Ala-arvo ei voi olla yhtä suuri kuin ylä-arvo tai suurempi.';
+  return null;
+}
+
+async function saveNew() {
+  const date = document.getElementById('eDate').value;
+  const time = document.getElementById('eTime').value || null;
+  if (!date) { setMsg('formMsg', 'Valitse päivä.', 'err'); return; }
+
+  const payload = [];
+  let error = null;
+  document.querySelectorAll('#readings .reading').forEach((el, idx) => {
+    if (error) return;
+    const s = el.querySelector('.r-sys').value.trim();
+    const d = el.querySelector('.r-dia').value.trim();
+    const p = el.querySelector('.r-pulse').value.trim();
+    const note = el.querySelector('.r-note').value.trim();
+    if (!s && !d && !p && !note) return;               // täysin tyhjä lukema ohitetaan
+    if (!s || !d) { error = `Lukema ${idx + 1}: täytä sekä ylä- että alapaine.`; return; }
+    const sys = parseInt(s, 10), dia = parseInt(d, 10), pulse = p ? parseInt(p, 10) : null;
+    const v = validateReading(sys, dia, pulse);
+    if (v) { error = `Lukema ${idx + 1}: ${v}`; return; }
+    payload.push({
+      user_id: window.currentUser.id,
+      measured_on: date,
+      measured_time: time,
+      systolic: sys,
+      diastolic: dia,
+      pulse: pulse,
+      note: note || null
+    });
+  });
+  if (error) { setMsg('formMsg', error, 'err'); return; }
+  if (payload.length === 0) { setMsg('formMsg', 'Syötä ainakin yksi lukema.', 'err'); return; }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  setMsg('formMsg', 'Tallennetaan…');
+  const { error: insErr } = await supabaseClient.from('blood_pressure').insert(payload);
+  btn.disabled = false;
+  if (insErr) { setMsg('formMsg', 'Tallennus epäonnistui: ' + insErr.message, 'err'); return; }
+
+  setMsg('formMsg', `Tallennettu (${payload.length} lukemaa).`, 'ok');
+  setTimeout(() => { if (document.getElementById('formMsg').classList.contains('ok')) setMsg('formMsg', ''); }, 4000);
+  resetReadings(2);
+  document.getElementById('eTime').value = nowTime();
+  await loadData();
+}
+
+// ── DATA ──
+async function loadData() {
+  const { data, error } = await supabaseClient
+    .from('blood_pressure')
+    .select('*')
+    .order('measured_on', { ascending: false })
+    .order('measured_time', { ascending: false, nullsFirst: false })
+    .order('seq', { ascending: true })
+    .limit(5000);
+  if (error) {
+    setMsg('loadMsg', 'Virhe haettaessa mittauksia: ' + error.message, 'err');
+    return;
+  }
+  setMsg('loadMsg', '');
+  rows = data || [];
+  render();
+}
+
+function rangeStart() {
+  if (range === 'all') return null;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  if (range === 'year') return `${t.getFullYear()}-01-01`;
+  t.setDate(t.getDate() - (parseInt(range, 10) - 1));
+  return isoDate(t);
+}
+function filtered() {
+  const start = rangeStart();
+  return rows.filter(r => !start || r.measured_on >= start);
+}
+function cmpRows(a, b) {
+  if (a.measured_on !== b.measured_on) return a.measured_on < b.measured_on ? 1 : -1;
+  const ta = a.measured_time || '', tb = b.measured_time || '';
+  if (ta !== tb) return ta < tb ? 1 : -1;
+  return a.seq - b.seq;
+}
+
+// ── RENDER ──
+function render() {
+  document.querySelectorAll('#rangeBar .range-chip').forEach(c => c.classList.toggle('active', c.dataset.range === range));
+  const list = filtered().sort(cmpRows);
+  renderPeriod(list);
+  renderSummary(list);
+  renderChart(list);
+  renderTable(list, false);
+}
+
+function renderPeriod(list) {
+  const el = document.getElementById('printPeriod');
+  if (!list.length) { el.textContent = 'Ei mittauksia valitulla aikavälillä'; return; }
+  const dates = list.map(r => r.measured_on).sort();
+  el.textContent = `Aikaväli: ${fmtDateNoDow(dates[0])} – ${fmtDateNoDow(dates[dates.length - 1])} · ${list.length} lukemaa`;
+}
+
+function renderSummary(list) {
+  const el = document.getElementById('summaryBar');
+  if (!list.length) { el.innerHTML = ''; return; }
+  const sys = list.map(r => r.systolic), dia = list.map(r => r.diastolic);
+  const pulses = list.filter(r => r.pulse != null).map(r => r.pulse);
+  const morning = list.filter(isMorning), evening = list.filter(isEvening);
+  const bp = (a) => a.length ? `${f0(avg(a.map(r => r.systolic)))} / ${f0(avg(a.map(r => r.diastolic)))}` : '–';
+  const hi = list.reduce((m, r) => r.systolic > m.systolic ? r : m, list[0]);
+  const lo = list.reduce((m, r) => r.systolic < m.systolic ? r : m, list[0]);
+  const days = new Set(list.map(r => r.measured_on)).size;
+  const card = (label, value, sub) => `<div class="summary-card"><span class="label">${label}</span><span class="value">${value}</span>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
+  el.innerHTML =
+    card('Keskiarvo', `${f0(avg(sys))} / ${f0(avg(dia))}`, `${list.length} lukemaa`) +
+    card('Syke KA', f0(avg(pulses)), '') +
+    card('Aamu KA', bp(morning), morning.length ? `${morning.length} lukemaa` : '') +
+    card('Ilta KA', bp(evening), evening.length ? `${evening.length} lukemaa` : '') +
+    card('Ylin', `${hi.systolic} / ${hi.diastolic}`, fmtShort(hi.measured_on)) +
+    card('Alin', `${lo.systolic} / ${lo.diastolic}`, fmtShort(lo.measured_on)) +
+    card('Päiviä', String(days), '');
+}
+
+function renderChart(list) {
+  const wrap = document.getElementById('chartWrap');
+  if (!window.Chart) { wrap.style.display = 'none'; return; }
+  if (!list.length) {
+    wrap.style.display = 'none';
+    if (chart) { chart.destroy(); chart = null; }
+    return;
+  }
+  wrap.style.display = '';
+  const byDay = new Map();
+  list.forEach(r => {
+    if (!byDay.has(r.measured_on)) byDay.set(r.measured_on, { s: [], d: [], p: [] });
+    const o = byDay.get(r.measured_on);
+    o.s.push(r.systolic); o.d.push(r.diastolic);
+    if (r.pulse != null) o.p.push(r.pulse);
+  });
+  const days = [...byDay.keys()].sort();
+  const many = days.length > 60;
+  const mk = (label, key, color, dash) => ({
+    label,
+    data: days.map(d => { const a = byDay.get(d)[key]; return a.length ? Math.round(avg(a) * 10) / 10 : null; }),
+    borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: dash || [],
+    pointRadius: many ? 0 : 3, pointHoverRadius: 4, tension: 0.2, spanGaps: true
+  });
+  const cfg = {
+    type: 'line',
+    data: {
+      labels: days.map(fmtShort),
+      datasets: [
+        mk('Ylä', 's', '#d97706'),
+        mk('Ala', 'd', '#6b4f38'),
+        mk('Syke', 'p', '#a89a8c', [5, 4])
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0, font: { size: 10 } }, grid: { display: false } },
+        y: { suggestedMin: 40, ticks: { font: { size: 10 } } }
+      }
+    }
+  };
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('bpChart'), cfg);
+}
+
+function renderTable(list, showAll) {
+  const tbody = document.getElementById('bpBody');
+  if (!list) list = filtered().sort(cmpRows);
+  if (!list.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Ei mittauksia valitulla aikavälillä.</td></tr>';
+    document.getElementById('moreWrap').style.display = 'none';
+    return;
+  }
+  // ryhmittele mittauskerroiksi (päivä + kellonaika)
+  const groups = [];
+  list.forEach(r => {
+    const key = r.measured_on + '|' + (r.measured_time || '');
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(r); else groups.push({ key, items: [r] });
+  });
+  const shown = showAll ? groups : groups.slice(0, groupLimit);
+  let html = '';
+  shown.forEach(g => {
+    g.items.forEach((r, i) => {
+      const first = i === 0;
+      html += `<tr class="clickable${first ? ' grp-start' : ''}" onclick="openModal('${r.id}')">
+        <td class="date nowrap">${first ? fmtDate(r.measured_on) : ''}</td>
+        <td class="nowrap">${first ? (hhmm(r.measured_time) || '–') : ''}</td>
+        <td class="num">${r.systolic}</td>
+        <td class="num">${r.diastolic}</td>
+        <td class="num">${r.pulse ?? ''}</td>
+        <td class="note">${escapeHtml(r.note || '')}</td>
+      </tr>`;
+    });
+  });
+  tbody.innerHTML = html;
+  const rest = groups.length - shown.length;
+  const more = document.getElementById('moreWrap');
+  more.style.display = rest > 0 ? '' : 'none';
+  document.getElementById('moreBtn').textContent = `Näytä lisää (${rest} mittauskertaa jäljellä)`;
+}
+
+function showMore() { groupLimit += PAGE_GROUPS; renderTable(null, false); }
+
+function setRange(r) {
+  range = r;
+  groupLimit = PAGE_GROUPS;
+  try { localStorage.setItem('bp_range', r); } catch (e) {}
+  render();
+}
+document.getElementById('rangeBar').addEventListener('click', e => {
+  const b = e.target.closest('.range-chip');
+  if (b) setRange(b.dataset.range);
+});
+
+function doPrint() {
+  // tulosteeseen kaikki valitun aikavälin rivit, ei vain ruudulla näkyvää osaa
+  renderTable(null, true);
+  window.print();
+  renderTable(null, false);
+}
+
+// ── MUOKKAUS ──
+function openModal(id) {
+  const r = rows.find(x => x.id === id);
+  if (!r) return;
+  editingId = id;
+  document.getElementById('mDate').value = r.measured_on;
+  document.getElementById('mTime').value = hhmm(r.measured_time);
+  document.getElementById('mSys').value = r.systolic;
+  document.getElementById('mDia').value = r.diastolic;
+  document.getElementById('mPulse').value = r.pulse ?? '';
+  document.getElementById('mNote').value = r.note ?? '';
+  setMsg('modalMsg', '');
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modalBackdrop')) return;
+  document.getElementById('modalBackdrop').classList.remove('open');
+  editingId = null;
+}
+async function saveEdit() {
+  if (!editingId) return;
+  const date = document.getElementById('mDate').value;
+  const time = document.getElementById('mTime').value || null;
+  const s = document.getElementById('mSys').value.trim();
+  const d = document.getElementById('mDia').value.trim();
+  const p = document.getElementById('mPulse').value.trim();
+  const note = document.getElementById('mNote').value.trim() || null;
+  if (!date) { setMsg('modalMsg', 'Valitse päivä.', 'err'); return; }
+  if (!s || !d) { setMsg('modalMsg', 'Täytä sekä ylä- että alapaine.', 'err'); return; }
+  const sys = parseInt(s, 10), dia = parseInt(d, 10), pulse = p ? parseInt(p, 10) : null;
+  const v = validateReading(sys, dia, pulse);
+  if (v) { setMsg('modalMsg', v, 'err'); return; }
+
+  const btn = document.getElementById('modalSaveBtn');
+  btn.disabled = true;
+  const { error } = await supabaseClient.from('blood_pressure')
+    .update({ measured_on: date, measured_time: time, systolic: sys, diastolic: dia, pulse, note })
+    .eq('id', editingId);
+  btn.disabled = false;
+  if (error) { setMsg('modalMsg', 'Tallennus epäonnistui: ' + error.message, 'err'); return; }
+  document.getElementById('modalBackdrop').classList.remove('open');
+  editingId = null;
+  await loadData();
+}
+async function deleteReading() {
+  if (!editingId) return;
+  if (!confirm('Poistetaanko tämä lukema?')) return;
+  const { error } = await supabaseClient.from('blood_pressure').delete().eq('id', editingId);
+  if (error) { setMsg('modalMsg', 'Poisto epäonnistui: ' + error.message, 'err'); return; }
+  document.getElementById('modalBackdrop').classList.remove('open');
+  editingId = null;
+  await loadData();
+}
+
+// ── ALUSTUS ──
+function formUntouched() {
+  return ![...document.querySelectorAll('#readings input')].some(i => i.value.trim());
+}
+document.addEventListener('visibilitychange', () => {
+  // puhelimessa sivu voi jäädä auki: päivitä päivä ja kello, jos lomaketta ei ole aloitettu
+  if (document.visibilityState === 'visible' && formUntouched()) {
+    document.getElementById('eDate').value = todayStr();
+    document.getElementById('eTime').value = nowTime();
+  }
+});
+
+function init() {
+  try { const r = localStorage.getItem('bp_range'); if (r) range = r; } catch (e) {}
+  document.getElementById('eDate').value = todayStr();
+  document.getElementById('eTime').value = nowTime();
+  resetReadings(2);
+  loadData();
+}
+init();
+</script>
+
+</body>
+</html>
