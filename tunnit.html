@@ -205,6 +205,10 @@
       border-bottom: 1px solid var(--border);
     }
     .time-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    /* Päivä-, tunti-, ylityö- ja tilasarakkeet eivät koskaan katkea usealle riville;
+       päiväsarake kutistuu sisällön levyiseksi ja ylimääräinen tila menee muistiinpanoille */
+    .time-table th:nth-child(-n+4), .time-table td:nth-child(-n+4) { white-space: nowrap; }
+    .time-table th:first-child, .time-table td:first-child { width: 1%; }
     .time-table tr.weekend td { color: var(--muted); background: var(--bg3); }
     .time-table tr.has-entry td { color: var(--text); }
     .time-table tr.is-vacation td { background: rgba(22,163,74,0.08); }
@@ -367,6 +371,31 @@
       .time-table tr.no-entry { display: none !important; }
       .badge-hours { background: #eee !important; color: #000 !important; }
       .lock-icon { display: none; }
+
+      /* ── TIIVIS TULOSTE (kuukausi mahtuu yhdelle A4:lle) ── */
+      @page { size: A4; margin: 10mm; }
+      body { min-height: 0 !important; }
+      .page { max-width: none; padding: 0; }
+      .print-header { margin-bottom: 0.4rem; padding-bottom: 0.3rem; }
+      .print-header h2 { font-size: 1.05rem; margin-bottom: 0.1rem; }
+      .print-header p  { font-size: 0.8rem; margin: 0; }
+
+      /* yhteenveto yhdelle tiiviille riville */
+      .summary-bar { flex-wrap: wrap; gap: 4px 6px; margin-bottom: 0.4rem; padding: 3px 4px; }
+      .summary-card { flex-direction: row; align-items: baseline; gap: 5px; padding: 1px 7px; box-shadow: none; }
+      .summary-card .label { font-size: 7.5pt; }
+      .summary-card .value { font-size: 10pt; }
+
+      .time-table { font-size: 11pt; page-break-inside: auto; }
+      .time-table thead { display: table-header-group; }
+      .time-table tr { page-break-inside: avoid; break-inside: avoid; }
+      .time-table th { padding: 3px 8px; border-bottom: 1px solid #000; }
+      .time-table td { padding: 3px 8px; border-bottom: none; }
+      .time-table .badge { padding: 0 5px; font-size: 10pt; }
+      .time-table td span[style] { font-size: 10pt !important; }
+
+      /* väliviiva vain viikon alkuun (maanantain yläpuolelle ja jakson ensimmäiselle riville) */
+      .time-table tr.week-start td { border-top: 1px solid #000; }
 
       /* per-yritys tuloste-asetukset */
       body.print-hide-overtime .time-table th:nth-child(3),
@@ -762,6 +791,10 @@ function renderTable(range) {
   while (cur <= end) { days.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
 
   let rows = '';
+  // Väliviiva tulostetaan viikon ensimmäisen näkyvän rivin yläpuolelle. Uusi viikko alkaa
+  // maanantaista, joten la/su-merkinnät jäävät edellisen viikon loppuun. Jos maanantai on
+  // tyhjä (piilotettu), viiva siirtyy seuraavalle näkyvälle riville.
+  let weekStartPending = true;
   days.forEach(date => {
     const y = date.getFullYear();
     const m = date.getMonth();
@@ -774,9 +807,11 @@ function renderTable(range) {
     const hasEntry = entry && (entry.hours > 0 || entry.overtime_hours > 0 || entry.is_vacation || entry.is_sick || entry.note);
     const isLocked = !!(entry && entry.submission_id);
 
+    if (dow === 1) weekStartPending = true;
     if (onlyUnsentFilter && (!hasEntry || isLocked)) return;
 
     let classes = 'clickable';
+    if (hasEntry && weekStartPending) { classes += ' week-start'; weekStartPending = false; }
     if (isWeekend)          classes += ' weekend';
     if (!hasEntry)          classes += ' no-entry';
     if (entry?.is_vacation) classes += ' is-vacation';
