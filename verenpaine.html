@@ -26,6 +26,10 @@
       --danger-bg:#fee2e2;
       --ok:       #16a34a;
       --shadow:   0 1px 4px rgba(100,60,20,0.08);
+      --border2: #cfc0ac;
+      --muted2: #a08878;
+      --accent-bg: rgba(217,119,6,0.10);
+      --radius: 6px;
     }
 
     body {
@@ -36,43 +40,22 @@
       min-height: 100vh;
     }
 
-    /* ── NAV ── */
-    nav {
-      background: var(--surface);
-      border-bottom: 2px solid var(--accent);
-      padding: 10px 24px;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      position: sticky;
-      top: 0;
-      z-index: 300;
-    }
-    nav h1 { font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 9px; }
-    .nav-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
-    .nav-links { display: flex; gap: 4px; margin-left: 8px; flex-wrap: wrap; }
-    .nav-link {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px; font-weight: 600;
-      color: var(--muted);
-      text-decoration: none;
-      padding: 6px 10px;
-      border-radius: 4px;
-    }
-    .nav-link:hover { background: var(--bg2); color: var(--text); }
-    .nav-link.current { color: var(--accent); }
+    /* ── HEADER + ☰-VALIKKO (sama kaikilla sivuilla) ── */
+    header { background: var(--surface); border-bottom: 2px solid var(--accent); padding: 10px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+    header .logo { height: 32px; width: 32px; border-radius: 50%; object-fit: cover; }
+    .nav-menu-wrap { position: relative; }
+    .nav-btn { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 4px; cursor: pointer; letter-spacing: .04em; }
+    .nav-btn:hover { background: var(--bg3); }
+    .nav-dropdown { display: none; position: absolute; top: calc(100% + 6px); left: 0; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); min-width: 190px; z-index: 999; box-shadow: 0 4px 16px rgba(100,60,20,0.15); overflow: hidden; }
+    .nav-dropdown.open { display: block; }
+    .nav-item { display: block; padding: 8px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); text-decoration: none; transition: background .1s; }
+    .nav-item:hover { background: var(--accent-bg); color: var(--accent); }
+    .nav-item.current { color: var(--accent); font-weight: 600; }
+    header h1 { font-size: 16px; font-weight: 500; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .btn-logout { background: none; border: 1px solid var(--border2); color: var(--muted2); font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 4px; cursor: pointer; letter-spacing: .04em; transition: all .15s; }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
     .ml-auto { margin-left: auto; }
-    .nav-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px; font-weight: 600;
-      padding: 6px 12px; border-radius: 4px;
-      cursor: pointer;
-    }
-    .nav-btn:hover { background: var(--bg2); }
 
     /* ── PAGE ── */
     .page { max-width: 900px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
@@ -227,7 +210,7 @@
     @media print {
       @page { size: A4; margin: 10mm; }
       * { color: #000 !important; }
-      nav, .entry-card, .range-bar, .chart-wrap, .more-wrap, .modal-backdrop, .screen-only { display: none !important; }
+      header, .entry-card, .range-bar, .chart-wrap, .more-wrap, .modal-backdrop, .screen-only { display: none !important; }
       body { visibility: visible !important; background: #fff; min-height: 0 !important; }
       .page { max-width: none; padding: 0; }
       .print-only { display: block; }
@@ -249,8 +232,7 @@
     }
 
     @media (max-width: 700px) {
-      nav { padding: 8px 12px; }
-      .nav-links { order: 3; width: 100%; margin-left: 0; }
+      header { padding: 8px 12px; gap: 10px; }
       .page { padding: 0.9rem 0.75rem 3rem; }
       .bp-table { font-size: 0.82rem; }
       .bp-table th, .bp-table td { padding: 6px 5px; }
@@ -261,19 +243,24 @@
 </head>
 <body>
 
-<nav>
-  <h1><img src="pikkukuva.png" alt="" class="nav-logo">Tuntiseuranta</h1>
-  <div class="nav-links">
-    <a class="nav-link" href="tunnit.html">Tunnit</a>
-    <a class="nav-link" href="yritykset.html">Yritykset</a>
-    <a class="nav-link" href="verokulut.html">Verokulut</a>
-    <a class="nav-link" href="kalenteri.html">Kalenteri</a>
-    <a class="nav-link" href="todo.html">Muistilista</a>
-    <a class="nav-link current" href="verenpaine.html">Verenpaine</a>
+<header>
+  <img src="pikkukuva.png" alt="Perhe" class="logo">
+  <div class="nav-menu-wrap">
+    <button class="nav-btn" onclick="toggleNav(event)">☰ Valikko</button>
+    <div class="nav-dropdown" id="navDropdown">
+      <a class="nav-item" href="tunnit.html">🕐 Tunnit</a>
+      <a class="nav-item" href="yritykset.html">🏢 Yritykset</a>
+      <a class="nav-item" href="verokulut.html">🧾 Verokulut</a>
+      <a class="nav-item" href="kalenteri.html">📅 Kalenteri</a>
+      <a class="nav-item" href="todo.html">✅ Muistilista</a>
+      <a class="nav-item current" href="verenpaine.html">🩺 Verenpaine</a>
+    </div>
   </div>
-  <div class="ml-auto"></div>
-  <button class="nav-btn" onclick="logout()">Kirjaudu ulos</button>
-</nav>
+  <h1>Verenpaine</h1>
+  <div class="header-right">
+    <button class="btn-logout" onclick="logout()">Kirjaudu ulos</button>
+  </div>
+</header>
 
 <div class="page">
 
@@ -371,6 +358,12 @@
 </div>
 
 <script>
+function toggleNav(e) {
+  e.stopPropagation();
+  document.getElementById('navDropdown').classList.toggle('open');
+}
+document.addEventListener('click', () => document.getElementById('navDropdown').classList.remove('open'));
+
 const DAYS_FI = ['Su','Ma','Ti','Ke','To','Pe','La'];
 const PAGE_GROUPS = 40;   // montako mittauskertaa näytetään kerralla ruudulla
 
